@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bonafide Certificate</title>
+
+<style>
+    body {
+        font-family: "Times New Roman", serif;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+    }
+
+    .page {
+        width: 210mm;
+        height: 297mm;
+        padding: 5mm 22mm 15mm 22mm;
+        box-sizing: border-box;
+        position: relative;
+    }
+
+    /* HEADER */
+    .header {
+        text-align: center;
+        border-bottom: 2px solid black;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+    }
+
+    .header img {
+        width: 100%;
+        height: 85px;
+        object-fit: contain;
+    }
+
+    /* TITLE */
+    .title {
+        text-align: center;
+        font-size: 22px;
+        font-weight: 700;
+        margin: 10px 0 20px;
+        padding: 15px 0;
+        letter-spacing: 1px;
+    }
+
+    /* REF + DATE */
+    .meta {
+        display: flex;
+        flex-direction: column;
+        font-size: 16px;
+        margin-bottom: 25px;
+        line-height: 1.5;
+    }
+
+    /* MAIN TEXT */
+    .content {
+        font-size: 17px;
+        line-height: 1.6;
+        text-align: justify;
+        margin-bottom: 30px;
+    }
+
+    /* DETAILS */
+    .details {
+        font-size: 17px;
+        line-height: 1.6;
+        margin-bottom: 80px;
+    }
+
+
+
+    /* QR Code left-aligned above footer */
+    .qr {
+        text-align: left;
+        margin-bottom: 25px;
+    }
+
+    .qr img {
+        height: 85px;
+    }
+
+    .qr p {
+        font-size: 12px;
+        margin-top: 4px;
+        margin-bottom: 0;
+        font-weight: normal;
+    }
+
+    /* Signature on Left */
+    .signature {
+        text-align: left;
+        margin-bottom: 20px;
+    }
+
+    .signature img {
+        height: 55px;
+        margin-bottom: 2px;
+    }
+
+    .signature-text {
+        font-size: 15px;
+        line-height: 1.4;
+        font-weight: bold;
+        text-align: left;
+    }
+
+    /* FOOTER */
+    .footer {
+        position: absolute;
+        bottom: 18mm;
+        left: 22mm;
+        right: 22mm;
+        text-align: center;
+    }
+
+    .footer .important {
+        font-style: italic;
+        font-size: 13px;
+        margin-bottom: 8px;
+        font-weight: normal;
+    }
+
+    .footer hr {
+        border: 1px solid black;
+        margin: 6px 0;
+    }
+
+    .footer .credit {
+        font-size: 13px;
+    }
+
+</style>
+</head>
+
+<body>
+
+<div class="page">
+
+    <!-- HEADER -->
+    <div class="header">
+        <img src="{{mitspath}}" alt="MITS Header">
+    </div>
+
+    <!-- TITLE -->
+    <div class="title">{{certTitle}}</div>
+
+    <!-- META -->
+    <div class="meta">
+        <div><strong>Ref.: {{refNo}}</strong></div>
+        <div><strong>Date: {{date}}</strong></div>
+    </div>
+
+    <!-- PARAGRAPH -->
+    <div class="content">
+        {{certIntro}}
+    </div>
+
+    <!-- DETAILS -->
+    <div class="details">
+        {{certNameLabel}} : {{studname}}<br>
+        {{certParentLabel}} : {{fathername}}<br>
+        {{certCourseLabel}} : {{programme}}/{{studbranch}}<br>
+        {{certSessionLabel}} : {{session}}
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <div class="signature">
+            <img src="{{logo_path}}" alt="HOD Signature">
+            <div class="signature-text">
+                {{studenr}} {{studname}}<br>
+                {{certSignerTitle}}<br>
+                {{studbranch}}
+            </div>
+        </div>
+
+        <div class="qr">
+            <img src="{{qr_img_path}}" alt="QR Code">
+            <p>{{certScanLabel}}</p>
+        </div>
+        <div class="important">
+            <strong>Important Declaration:</strong> {{certImportantDeclaration}}
+        </div>
+        <hr>
+        <div class="credit">
+            {{certFooterCredit}}
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

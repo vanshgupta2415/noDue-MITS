@@ -1,79 +1,57 @@
-import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
+/**
+ * server.ts — Local session helper (replaces Supabase)
+ *
+ * We store a signed JWT in an httpOnly cookie called "auth_token".
+ * This file provides getSessionWithPrisma() so existing call-sites
+ * continue to work without changes.
+ */
 import { cookies } from "next/headers";
-import { prisma } from "@/lib/prisma";
+import { jwtVerify } from "jose";
+
+export interface LocalSession {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  enrollmentNo?: string | null;
+  department?: string | null;
+}
+
+function getSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not set");
+  return new TextEncoder().encode(secret);
+}
 
 /**
- * Creates a Supabase client for use in Server Components, API Routes, and Server Actions.
- * It reads/writes Supabase auth cookies so the OAuth flow works correctly.
+ * Reads and verifies the auth_token cookie.
+ * Returns the session payload or null if missing / invalid.
  */
+export async function getSessionWithPrisma(): Promise<LocalSession | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return null;
+
+    const { payload } = await jwtVerify(token, getSecret());
+
+    return {
+      id: payload.userId as string,
+      name: payload.name as string,
+      email: payload.email as string,
+      role: payload.role as string,
+      enrollmentNo: (payload.enrollmentNo as string | undefined) ?? null,
+      department: (payload.department as string | undefined) ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Keep for legacy import compatibility — not used anymore
 export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          } catch {
-            // setAll is called from Server Components where cookies can't be set.
-            // This can safely be ignored if middleware refreshes the session.
-          }
-        },
-      },
-    }
-  );
+  throw new Error("Supabase has been removed. Use getSessionWithPrisma() instead.");
 }
-
-/**
- * Creates a Supabase client using the service role key.
- * This bypasses RLS policies and should only be used in secure server-side contexts.
- */
 export function createSupabaseServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-/**
- * Gets the current Supabase-authenticated user's session
- * and fetches their application-specific data from Prisma
- */
-export async function getSessionWithPrisma() {
-  const supabase = await createSupabaseServerClient();
-  
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
-
-  // Fetch user's application data from Prisma
-  const userData = await prisma.user.findUnique({
-    where: { id: user.id },
-  });
-
-  if (!userData) {
-    return null;
-  }
-
-  return {
-    id: userData.id,
-    name: userData.name,
-    email: userData.email,
-    role: userData.role,
-    enrollmentNo: userData.enrollmentNo,
-    department: userData.department,
-  };
+  throw new Error("Supabase has been removed.");
 }

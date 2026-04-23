@@ -23,43 +23,120 @@ export async function GET(request: NextRequest) {
     }
 
     if (session.role === "STUDENT") {
-      // ─── Student History: all applications with full approval chain ───
-      const applications = await prisma.application.findMany({
-        where: { studentId: session.userId },
-        include: {
-          approvals: {
-            orderBy: { stage: "asc" },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      // ─── Student History: Consolidation of all application types ───
+      const [noDuesApps, nocApps, bonafideApps] = await Promise.all([
+        prisma.application.findMany({
+          where: { studentId: session.userId },
+          include: { approvals: { orderBy: { stage: "asc" } } },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.nocApplication.findMany({
+          where: { studentId: session.userId },
+          orderBy: { createdAt: "desc" },
+        }),
+        (prisma as any).bonafideApplication.findMany({
+          where: { studentId: session.userId },
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
 
-      // For each approval that has an approvedBy, fetch the reviewer's name
+      // Map NOC and Bonafide to a compatible structure
+      const mappedNoc = nocApps.map((app: any) => ({
+        id: app.id,
+        type: 'NOC',
+        applicationNo: app.applicationNo || 'pending...',
+        status: app.status,
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt,
+        fullName: app.studentName,
+        course: "Student",
+        totalStages: 2, 
+        approvedStages: [app.hodApprovalStatus, app.tpcApprovalStatus].filter((s: string) => s === "APPROVED").length,
+        completionPercentage: ([app.hodApprovalStatus, app.tpcApprovalStatus].filter((s: string) => s === "APPROVED").length / 2) * 100,
+        rejectedBy: app.status === 'REJECTED' ? {
+          department: app.hodApprovalStatus === 'REJECTED' ? "HOD" : "T&P Cell",
+          stage: app.hodApprovalStatus === 'REJECTED' ? 1 : 2,
+          remarks: app.hodRemarks || app.tpcRemarks || "Application declined",
+          actionDate: app.updatedAt,
+          reviewerName: null
+        } : null,
+        approvals: [
+         {
+           id: `noc-${app.id}-hod`,
+           stage: 1,
+           department: "Head of Department (HOD)",
+           status: app.hodApprovalStatus,
+           remarks: app.hodRemarks,
+           actionDate: app.updatedAt,
+           reviewerName: null,
+           reviewerRole: "HOD"
+         },
+         {
+           id: `noc-${app.id}-tpc`,
+           stage: 2,
+           department: "Training & Placement Cell",
+           status: app.tpcApprovalStatus,
+           remarks: app.tpcRemarks,
+           actionDate: app.updatedAt,
+           reviewerName: null,
+           reviewerRole: "TP"
+         }
+        ]
+      }));
+
+      const mappedBonafide = bonafideApps.map((app: any) => ({
+        id: app.id,
+        type: 'BONAFIDE',
+        applicationNo: app.applicationNo || 'pending...',
+        status: app.status,
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt,
+        fullName: app.studentName,
+        course: "Student",
+        totalStages: 1,
+        approvedStages: app.hodApprovalStatus === 'APPROVED' ? 1 : 0,
+        completionPercentage: app.hodApprovalStatus === 'APPROVED' ? 100 : 0,
+        rejectedBy: app.status === 'REJECTED' ? {
+          department: "HOD",
+          stage: 1,
+          remarks: app.hodRemarks || "Application declined",
+          actionDate: app.updatedAt,
+          reviewerName: null
+        } : null,
+        approvals: [
+          {
+            id: `bonafide-${app.id}-hod`,
+            stage: 1,
+            department: "Head of Department (HOD)",
+            status: app.hodApprovalStatus,
+            remarks: app.hodRemarks,
+            actionDate: app.updatedAt,
+            reviewerName: null,
+            reviewerRole: "HOD"
+          }
+         ]
+      }));
+
+      // Map No Dues using the existing enrichment logic
       const reviewerIds = new Set<string>();
-      for (const app of applications) {
-        for (const a of app.approvals) {
-          if (a.approvedBy) reviewerIds.add(a.approvedBy);
-        }
-      }
-
+      noDuesApps.forEach((app: any) => app.approvals.forEach((a: any) => { if (a.approvedBy) reviewerIds.add(a.approvedBy); }));
+      
       const reviewers = reviewerIds.size > 0
         ? await prisma.user.findMany({
             where: { id: { in: Array.from(reviewerIds) } },
             select: { id: true, name: true, role: true },
           })
         : [];
+      
+      const reviewerMap = Object.fromEntries(reviewers.map((r: any) => [r.id, { name: r.name, role: r.role }]));
 
-      const reviewerMap = Object.fromEntries(
-        reviewers.map((r) => [r.id, { name: r.name, role: r.role }])
-      );
-
-      const enrichedApplications = applications.map((app) => {
+      const enrichedNoDues = noDuesApps.map((app: any) => {
         const totalStages = app.approvals.length;
-        const approvedStages = app.approvals.filter((a) => a.status === "APPROVED").length;
-        const rejectedApproval = app.approvals.find((a) => a.status === "REJECTED");
-
+        const approvedStages = app.approvals.filter((a: any) => a.status === "APPROVED").length;
+        const rejectedApproval = app.approvals.find((a: any) => a.status === "REJECTED");
         return {
           id: app.id,
+          type: 'NODUES',
           applicationNo: app.applicationNo,
           status: app.status,
           createdAt: app.createdAt,
@@ -69,43 +146,39 @@ export async function GET(request: NextRequest) {
           totalStages,
           approvedStages,
           completionPercentage: totalStages > 0 ? Math.round((approvedStages / totalStages) * 100) : 0,
-          rejectedBy: rejectedApproval
-            ? {
-                department: rejectedApproval.department,
-                stage: rejectedApproval.stage,
-                remarks: rejectedApproval.remarks,
-                actionDate: rejectedApproval.actionDate,
-                reviewerName: rejectedApproval.approvedBy
-                  ? reviewerMap[rejectedApproval.approvedBy]?.name || "Unknown"
-                  : null,
-              }
-            : null,
-          approvals: app.approvals.map((a) => ({
+          rejectedBy: rejectedApproval ? {
+            department: rejectedApproval.department,
+            stage: rejectedApproval.stage,
+            remarks: rejectedApproval.remarks,
+            actionDate: rejectedApproval.actionDate,
+            reviewerName: rejectedApproval.approvedBy ? reviewerMap[rejectedApproval.approvedBy]?.name || "Unknown" : null,
+          } : null,
+          approvals: app.approvals.map((a: any) => ({
             id: a.id,
             stage: a.stage,
             department: a.department,
             status: a.status,
             remarks: a.remarks,
             actionDate: a.actionDate,
-            reviewerName: a.approvedBy
-              ? reviewerMap[a.approvedBy]?.name || "Unknown"
-              : null,
-            reviewerRole: a.approvedBy
-              ? reviewerMap[a.approvedBy]?.role || null
-              : null,
+            reviewerName: a.approvedBy ? reviewerMap[a.approvedBy]?.name || "Unknown" : null,
+            reviewerRole: a.approvedBy ? reviewerMap[a.approvedBy]?.role || null : null,
           })),
         };
       });
+
+      const allApplications = [...enrichedNoDues, ...mappedNoc, ...mappedBonafide].sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
       return NextResponse.json({
         success: true,
         data: {
           type: "student",
-          totalApplications: applications.length,
-          accepted: applications.filter((a) => a.status === "FULLY_APPROVED").length,
-          rejected: applications.filter((a) => a.status === "REJECTED").length,
-          inProgress: applications.filter((a) => a.status === "SUBMITTED" || a.status === "IN_PROGRESS").length,
-          applications: enrichedApplications,
+          totalApplications: allApplications.length,
+          accepted: allApplications.filter(a => a.status === "FULLY_APPROVED" || a.status === "APPROVED").length,
+          rejected: allApplications.filter(a => a.status === "REJECTED").length,
+          inProgress: allApplications.filter(a => a.status === "SUBMITTED" || a.status === "IN_PROGRESS" || a.status === "PENDING").length,
+          applications: allApplications,
         },
       });
     } else {

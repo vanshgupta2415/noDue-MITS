@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { useSystemConfig } from "@/hooks/useSystemConfig";
 
 const DEPARTMENTS = [
   "CSE",
@@ -26,7 +27,12 @@ function VerifyForm() {
   const isFaculty = userType === "faculty";
   const isExternal = userType === "external";
 
+  const { departments, loadingConfig } = useSystemConfig();
+
+  const [fullName, setFullName] = useState("");
+  const [fatherName, setFatherName] = useState("");
   const [enrollmentNo, setEnrollmentNo] = useState("");
+  const [passOutYear, setPassOutYear] = useState("");
   const [department, setDepartment] = useState("");
   const [instituteEmail, setInstituteEmail] = useState("");
   const [detectedRole, setDetectedRole] = useState<"student" | "faculty" | null>(null);
@@ -34,6 +40,21 @@ function VerifyForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
+
+  // Initialize fullName from cookie if available
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const match = document.cookie.match(new RegExp('(^| )pending_google_auth=([^;]+)'));
+      if (match) {
+        try {
+          const data = JSON.parse(decodeURIComponent(match[2]));
+          if (data.googleName) setFullName(data.googleName);
+        } catch (e) {
+          console.error("Failed to parse pending cookie", e);
+        }
+      }
+    }
+  }, []);
 
   // If neither student nor faculty nor external, show error
   if (!isStudent && !isFaculty && !isExternal) {
@@ -59,13 +80,15 @@ function VerifyForm() {
     e.preventDefault();
     setError("");
 
-    if (isStudent && !enrollmentNo.trim()) {
-      setError("Enrollment number is required for students.");
-      return;
+    if (isExternal) {
+      if (!fullName.trim()) { setError("Name is required."); return; }
+      if (!fatherName.trim()) { setError("Father's Name is required."); return; }
+      if (!enrollmentNo.trim()) { setError("Enrollment number is required."); return; }
+      if (!passOutYear.trim()) { setError("Passout year is required."); return; }
     }
 
-    if (isExternal && !instituteEmail.trim()) {
-      setError("Please enter your institute email (@mitsgwl.ac.in or @mitsgwl.com).");
+    if (isStudent && !enrollmentNo.trim()) {
+      setError("Enrollment number is required for students.");
       return;
     }
 
@@ -86,20 +109,28 @@ function VerifyForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          enrollmentNo: (isStudent || detectedRole === "student") ? enrollmentNo.trim().toUpperCase() : undefined,
+          fullName: isExternal ? fullName.trim() : undefined,
+          fatherName: isExternal ? fatherName.trim() : undefined,
+          enrollmentNo: (isStudent || isExternal || detectedRole === "student") ? enrollmentNo.trim().toUpperCase() : undefined,
+          passOutYear: isExternal ? parseInt(passOutYear) : undefined,
           department,
-          instituteEmail: isExternal ? instituteEmail.trim() : undefined,
+          instituteEmail: (isExternal && detectedRole) ? instituteEmail.trim() : undefined,
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
+        if (data.user?.status === "PENDING") {
+          router.push("/pending-approval");
+          return;
+        }
         login({
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
           role: data.user.role,
+          status: data.user.status,
           enrollmentNo: data.user.enrollmentNo,
           department: data.user.department,
         });
@@ -156,7 +187,7 @@ function VerifyForm() {
               {isStudent
                 ? "Provide your enrollment number and department to complete your student profile."
                 : isExternal
-                  ? "Enter your official institute email and details to complete your profile."
+                  ? "Enter your details to complete your profile."
                   : "Select your department to complete your faculty profile."}
             </p>
           </div>
@@ -211,7 +242,7 @@ function VerifyForm() {
                   ? "Your email was identified as a student account. Please provide your enrollment number and department."
                   : isFaculty
                     ? "Your email was identified as a faculty account. Please select your department to proceed."
-                    : "Your Google email is not an institute email. Please enter your official institute email below."}
+                    : "Your Google email is not an institute email. Please enter your details below."}
               </p>
             </div>
 
@@ -225,46 +256,78 @@ function VerifyForm() {
                 </div>
               )}
 
-              {/* Institute Email — External users only */}
+              {/* External fields */}
               {isExternal && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
-                    Institute Email
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900"
+                        placeholder="Your full name"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                      />
                     </div>
-                    <input
-                      type="email"
-                      required
-                      className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900"
-                      placeholder="e.g. yourname@mitsgwl.ac.in or yourname@mitsgwl.com"
-                      value={instituteEmail}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setInstituteEmail(val);
-                        const emailDomain = val.toLowerCase().trim().split("@")[1];
-                        if (emailDomain === "mitsgwl.ac.in") {
-                          setDetectedRole("student");
-                        } else if (emailDomain === "mitsgwl.com") {
-                          setDetectedRole("faculty");
-                        } else {
-                          setDetectedRole(null);
-                        }
-                      }}
-                    />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Enter your official MITS email (@mitsgwl.ac.in for students, @mitsgwl.com for faculty)
-                  </p>
-                </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
+                      Father's Name
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900"
+                        placeholder="Father's full name"
+                        value={fatherName}
+                        onChange={(e) => setFatherName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
+                      Passout Year
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <input
+                        type="number"
+                        required
+                        min="2000"
+                        max="2100"
+                        className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900"
+                        placeholder="e.g. 2024"
+                        value={passOutYear}
+                        onChange={(e) => setPassOutYear(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
               )}
 
-              {/* Enrollment Number — Students only */}
-              {showStudentFields && (
+              {/* Enrollment Number — Students and External only */}
+              {(showStudentFields || isExternal) && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
                     Enrollment Number
@@ -287,7 +350,7 @@ function VerifyForm() {
                 </div>
               )}
 
-              {/* Department — Both roles */}
+              {/* Department — All roles */}
               <div>
                 <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">
                   Department
@@ -300,13 +363,14 @@ function VerifyForm() {
                   </div>
                   <select
                     required
-                    className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900 appearance-none"
+                    disabled={loadingConfig}
+                    className="block w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900 appearance-none disabled:opacity-50"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                   >
-                    <option value="" disabled>Select your department</option>
-                    {DEPARTMENTS.map((dept) => (
-                      <option key={dept} value={dept}>{dept}</option>
+                    <option value="" disabled>{loadingConfig ? "Loading departments..." : "Select your department"}</option>
+                    {departments.map((dept) => (
+                      <option key={dept.value} value={dept.value}>{dept.label}</option>
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">

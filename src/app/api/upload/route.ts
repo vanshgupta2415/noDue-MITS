@@ -1,11 +1,14 @@
 import { NextResponse, NextRequest } from "next/server";
-import { createSupabaseServerClient, getSessionWithPrisma } from "@/lib/supabase/server";
+import { getSessionWithPrisma } from "@/lib/supabase/server";
+import path from "path";
+import fs from "fs/promises";
+
+const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
 /**
  * POST /api/upload
  * Accepts a multipart form upload (field name: "file", plus "category" text field).
- * Uploads to Supabase Storage bucket "noDue Documents" under a path like:
- *   noDue Documents/{userId}/{category}/{timestamp}_{originalName}
+ * Saves file to /public/uploads/{userId}/{category}/{timestamp}_{originalName}
  * Returns the public URL of the uploaded file.
  */
 export async function POST(request: NextRequest) {
@@ -64,40 +67,25 @@ export async function POST(request: NextRequest) {
     // Build storage path
     const timestamp = Date.now();
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `${user.id}/${category}/${timestamp}_${sanitizedName}`;
+    const relativePath = `${user.id}/${category}/${timestamp}_${sanitizedName}`;
+    const fullDir = path.join(UPLOADS_DIR, user.id, category);
+    const fullPath = path.join(UPLOADS_DIR, relativePath);
 
-    // Convert File to ArrayBuffer for upload
+    // Ensure directory exists
+    await fs.mkdir(fullDir, { recursive: true });
+
+    // Write file
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    await fs.writeFile(fullPath, Buffer.from(arrayBuffer));
 
-    // Upload to Supabase Storage
-    // Use Supabase client with user's Supabase auth session
-    const supabase = await createSupabaseServerClient();
-    const { error: uploadError } = await supabase.storage
-      .from("noDue Documents")
-      .upload(storagePath, buffer, {
-        contentType: file.type,
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
-      return NextResponse.json(
-        { success: false, error: `Upload failed: ${uploadError.message}` },
-        { status: 500 }
-      );
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("noDue Documents")
-      .getPublicUrl(storagePath);
+    // Public URL (served by Next.js static files from /public)
+    const publicUrl = `/uploads/${relativePath}`;
 
     return NextResponse.json({
       success: true,
       data: {
-        url: urlData.publicUrl,
-        path: storagePath,
+        url: publicUrl,
+        path: relativePath,
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,

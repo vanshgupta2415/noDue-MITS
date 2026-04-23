@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>No-Dues Certificate</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 40px; color: #1e293b; background-color: #fff; }
+        .border { border: 15px double #1e293b; padding: 40px; position: relative; }
+        .logo { position: absolute; top: 40px; right: 40px; width: 100px; }
+        .header { text-align: center; margin-bottom: 50px; }
+        .header h1 { font-size: 28px; font-weight: 800; margin: 0; text-transform: uppercase; color: #1e3a8a; }
+        .header h2 { font-size: 16px; font-weight: 600; margin: 5px 0; color: #475569; }
+        .header p { font-size: 12px; margin: 2px 0; }
+        
+        .title { text-align: center; margin: 40px 0; border-bottom: 2px solid #1e3a8a; display: inline-block; padding-bottom: 10px; width: 100%; }
+        .title h3 { font-size: 24px; font-weight: 700; color: #1e3a8a; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
+        
+        .content { font-size: 16px; line-height: 1.8; margin: 40px 0; text-align: justify; }
+        .field { font-weight: 700; border-bottom: 1px dotted #94a3b8; padding: 0 5px; color: #000; }
+        
+        .footer { margin-top: 80px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .signature { text-align: center; width: 180px; }
+        .signature p { font-size: 14px; font-weight: 700; margin: 10px 0 0 0; border-top: 1px solid #1f2937; padding-top: 5px; }
+        .signature span { font-size: 11px; color: #64748b; font-weight: 500; }
+        
+        .qr-section { text-align: left; }
+        .qr-section img { width: 90px; height: 90px; border: 1px solid #e2e8f0; padding: 5px; }
+        .qr-section p { font-size: 9px; margin-top: 5px; color: #94a3b8; font-family: monospace; }
+        
+        .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 120px; color: rgba(30, 58, 138, 0.03); font-weight: 900; z-index: -1; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="border">
+        {{#if logoBase64}}
+        <img src="{{logoBase64}}" class="logo" alt="MITS Logo">
+        {{/if}}
+        
+        <div class="watermark">MITS GWALIOR</div>
+        
+        <div class="header">
+            <h1>Madhav Institute of Technology & Science</h1>
+            <h2>(A Govt. Aided UGC Autonomous & NAAC Accredited Institute)</h2>
+            <p>Race Course Road, Gwalior, Madhya Pradesh - 474005</p>
+            <p>Tel: 0751-2409397 | Fax: 0751-2664684 | Web: mitsgwl.ac.in</p>
+        </div>
+        
+        <div class="title">
+            <h3>No-Dues Certificate</h3>
+        </div>
+        
+        <div class="content">
+            This is to certify that Mr./Ms. <span class="field">{{studentName}}</span>, 
+            bearing Enrollment No./Roll No. <span class="field">{{enrollmentId}}</span>, 
+            a student of <span class="field">{{degree}}</span> in the department of <span class="field">{{department}}</span>,
+            has successfully completed the No-Dues clearance process for the year <span class="field">{{academicYear}}</span>.
+            <br><br>
+            The student has no outstanding dues, liabilities, or obligations towards any department of the Institute,
+            including Library, Hostels, Laboratories, Sports, and Accounts.
+            <br><br>
+            All required documents, projects, and materials have been submitted and verified by the respective authorities.
+        </div>
+        
+        <div class="footer">
+            <div class="qr-section">
+                {{#if qrCodeDataURI}}
+                <img src="{{qrCodeDataURI}}" alt="Verification QR Code">
+                <p>Verify: {{applicationId}}</p>
+                {{/if}}
+            </div>
+            
+            <div class="signature">
+                <p>REGISTRAR</p>
+                <span>MITS, Gwalior</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

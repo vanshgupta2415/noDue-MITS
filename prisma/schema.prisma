@@ -7,15 +7,23 @@ datasource db {
 }
 
 model User {
-  id           String        @id // Supabase UID (UUID)
-  email        String        @unique
-  avatarUrl    String?                 // Google profile picture or custom
-  enrollmentNo String?       @unique
-  name         String
-  role         UserRole      @default(STUDENT)
-  department   String?
-  createdAt    DateTime      @default(now())
-  applications Application[] @relation("StudentApplications")
+  id                   String                @id @default(cuid())
+  email                String                @unique
+  passwordHash         String
+  avatarUrl            String?
+  enrollmentNo         String?               @unique
+  name                 String
+  department           String?
+  createdAt            DateTime              @default(now())
+  role                 String                @default("STUDENT")
+  fatherName           String?
+  passOutYear          Int?
+  status               UserStatus            @default(ACTIVE)
+  applications         Application[]         @relation("StudentApplications")
+  bonafideApplications BonafideApplication[] @relation("StudentBonafideApplications")
+  nocApplications      NocApplication[]      @relation("StudentNocApplications")
+  bonafideApprovals    BonafideApplication[] @relation("HODBonafideApprovals")
+  signatureUrl         String?
 }
 
 model Application {
@@ -42,6 +50,7 @@ model Application {
   currentStage       Int               @default(1)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  dynamicData        Json?             @default("{}")
   student            User              @relation("StudentApplications", fields: [studentId], references: [id])
   approvals          Approval[]
 
@@ -63,18 +72,88 @@ model Approval {
   @@index([department, stage, status])
 }
 
-enum UserRole {
-  STUDENT
-  FACULTY
-  CLASS_COORDINATOR
-  HOD
-  HOSTEL_WARDEN
-  LIBRARY_ADMIN
-  WORKSHOP_ADMIN
-  TP_OFFICER
-  GENERAL_OFFICE
-  ACCOUNTS_OFFICER
-  SUPER_ADMIN
+model SystemDepartment {
+  id        String   @id
+  value     String   @unique
+  label     String
+  createdAt DateTime @default(now())
+}
+
+model SystemRole {
+  id          String   @id
+  value       String   @unique
+  label       String
+  isUniversal Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model FormTemplate {
+  id        String   @id @default(cuid())
+  formType  String   @unique
+  schema    Json     @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
+model NocApplication {
+  id                   String            @id @default(cuid())
+  applicationNo        String            @unique
+  studentId            String
+  status               ApplicationStatus @default(IN_PROGRESS)
+  enrollmentNo         String?
+  studentName          String?
+  currentYear          String?
+  companyName          String?
+  companyLocation      String?
+  companyAddress       String?
+  companyWebsite       String?
+  durationInDays       String?
+  startDate            DateTime?
+  endDate              DateTime?
+  recipientName        String?
+  recipientDesignation String?
+  applyingThrough      String?
+  stipend              String?
+  offerLetterUrl       String?
+  hodApprovalStatus    ApprovalStatus    @default(UNDER_REVIEW)
+  hodRemarks           String?
+  tpcApprovalStatus    ApprovalStatus    @default(UNDER_REVIEW)
+  tpcRemarks           String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  dynamicData          Json?             @default("{}")
+  student              User              @relation("StudentNocApplications", fields: [studentId], references: [id])
+
+  @@index([studentId])
+}
+
+model BonafideApplication {
+  id                String            @id @default(cuid())
+  applicationNo     String            @unique
+  studentId         String
+  status            ApplicationStatus @default(IN_PROGRESS)
+  studentName       String?
+  enrollmentNo      String?
+  fatherName        String?
+  currentYear       String?
+  semester          String?
+  emailAddress      String?
+  session           String?
+  hodApprovalStatus ApprovalStatus    @default(UNDER_REVIEW)
+  hodRemarks        String?
+  dynamicData       Json?             @default("{}")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  student           User              @relation("StudentBonafideApplications", fields: [studentId], references: [id])
+  hod               User?             @relation("HODBonafideApprovals", fields: [hodId], references: [id])
+  hodId             String?
+
+  @@index([studentId])
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  REJECTED
 }
 
 enum ApplicationStatus {

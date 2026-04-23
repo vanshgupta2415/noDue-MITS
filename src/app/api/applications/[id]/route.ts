@@ -24,6 +24,15 @@ export async function GET(
         approvals: {
           orderBy: { stage: "asc" },
         },
+        student: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            enrollmentNo: true,
+            department: true,
+          },
+        },
       },
     });
 

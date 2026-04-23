@@ -8,18 +8,18 @@ import Link from "next/link";
 interface Application {
   id: string;
   applicationNo: string;
+  type: string;
   status: string;
   fullName: string;
   course: string;
   createdAt: string;
   updatedAt: string;
-  completionPercentage: number;
 }
 
 export default function CertificateSection() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [application, setApplication] = useState<Application | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
@@ -28,19 +28,20 @@ export default function CertificateSection() {
       return;
     }
     if (user?.id) {
-      fetchApplication();
+      fetchApplications();
     }
   }, [user, loading]);
 
-  const fetchApplication = async () => {
+  const fetchApplications = async () => {
     try {
-      const res = await fetch(`/api/applications?studentId=${user!.id}`);
+      // Reuse the student applications list API
+      const res = await fetch(`/api/student/applications`);
       const data = await res.json();
-      if (data.success && data.data.length > 0) {
-        setApplication(data.data[0]);
+      if (data.success) {
+        setApplications(data.data);
       }
     } catch (err) {
-      console.error("Failed to fetch application:", err);
+      console.error("Failed to fetch applications:", err);
     } finally {
       setFetching(false);
     }
@@ -54,66 +55,70 @@ export default function CertificateSection() {
     );
   }
 
-  const isFullyApproved = application?.status === "FULLY_APPROVED";
+  const approvedApplications = applications.filter(a => a.status === "FULLY_APPROVED");
 
   return (
     <div className="min-h-screen">
-      <PageHeader title="Certificate" subtitle="View and download your no dues certificate" />
+      <PageHeader title="Certificate Center" subtitle="View and download your official certificates" />
 
       <div className="p-6 lg:p-8">
-        {isFullyApproved && application ? (
-          /* Issued Certificate View */
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-2xl border-2 border-emerald-200 shadow-sm overflow-hidden relative">
-              {/* Issued badge */}
-              <div className="absolute top-4 right-4 z-10">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-sm">
-                  <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  ISSUED
-                </span>
-              </div>
-
-              <div className="bg-linear-to-r from-emerald-50 to-teal-50 p-8">
-                <div className="flex items-center space-x-5">
-                  <div className="h-16 w-16 bg-emerald-100 rounded-2xl flex items-center justify-center shrink-0">
-                    <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+        {approvedApplications.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {approvedApplications.map((app) => (
+              <div key={app.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+                <div className={`p-6 bg-linear-to-br ${
+                  app.type === 'NODUES' ? 'from-emerald-50 to-teal-50' : 
+                  app.type === 'NOC' ? 'from-purple-50 to-indigo-50' : 
+                  'from-blue-50 to-indigo-50'
+                }`}>
+                  <div className="flex items-start justify-between">
+                    <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
+                      app.type === 'NODUES' ? 'bg-emerald-100 text-emerald-600' : 
+                      app.type === 'NOC' ? 'bg-purple-100 text-purple-600' : 
+                      'bg-blue-100 text-blue-600'
+                    }`}>
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow-sm uppercase tracking-wider">
+                      Issued
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">No Dues Certificate</h3>
-                    <p className="text-gray-500 text-sm mt-1">
-                      Ref: {application.applicationNo}
-                    </p>
-                    <p className="text-gray-400 text-xs mt-0.5">
-                      Issued on{" "}
-                      {new Date(application.updatedAt).toLocaleDateString("en-IN", {
-                        year: "numeric", month: "long", day: "numeric",
-                      })}
-                      {" "}&bull;{" "}{application.fullName} &mdash; {application.course}
-                    </p>
+                  <div className="mt-4">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {app.type === 'NODUES' ? 'No Dues Certificate' : 
+                       app.type === 'NOC' ? 'No Objection Certificate' : 
+                       'Bonafide Certificate'}
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1 font-mono uppercase tracking-tight">Ref: {app.applicationNo}</p>
                   </div>
                 </div>
+                
+                <div className="p-5 flex flex-col gap-3 mt-auto border-t border-gray-50 bg-white">
+                  <Link 
+                    href={
+                      app.type === 'BONAFIDE' ? `/bonafide/certificate/${app.id}` :
+                      app.type === 'NOC' ? `/noc/certificate/${app.id}` :
+                      app.type === 'NODUES' ? `/certificate/nodues/${app.id}` :
+                      '#'
+                    }
+                    className={`w-full py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm ${
+                      app.type === 'BONAFIDE' 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                        : app.type === 'NOC'
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download PDF
+                  </Link>
+                </div>
               </div>
-
-              <div className="p-6 flex space-x-3">
-                <button className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2 shadow-sm">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span>Download PDF</span>
-                </button>
-                <button className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  <span>Preview</span>
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
         ) : (
           /* No Certificate Available */
@@ -124,25 +129,17 @@ export default function CertificateSection() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900">No Certificate Available</h3>
+              <h3 className="text-lg font-bold text-gray-900">No Certificates Ready</h3>
               <p className="text-gray-500 text-sm mt-2 max-w-sm mx-auto">
-                {application
-                  ? `Your application is ${application.status === "REJECTED" ? "rejected" : "still in progress"}. Complete all department approvals to receive your certificate.`
-                  : "Submit your No-Dues application to begin the approval process."}
+                Once your applications are approved, your downloadable certificates will appear here. Currently, no certificates have been fully issued.
               </p>
-              <div className="mt-6">
-                {application ? (
-                  <Link href="/track" className="inline-flex items-center text-blue-600 font-semibold text-sm hover:text-blue-700 transition-colors">
-                    View Approval Progress
-                    <svg className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
-                ) : (
-                  <Link href="/apply" className="inline-block px-6 py-2.5 bg-slate-900 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors shadow-sm">
-                    Apply Now
-                  </Link>
-                )}
+              <div className="mt-8 flex items-center justify-center gap-4">
+                <Link href="/track" className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all text-sm">
+                  View Track Status
+                </Link>
+                <Link href="/dashboard" className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all text-sm">
+                  Go to Dashboard
+                </Link>
               </div>
             </div>
           </div>

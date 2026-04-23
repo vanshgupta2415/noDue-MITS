@@ -1,86 +1,64 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
+
+function getSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not set");
+  return new TextEncoder().encode(secret);
+}
 
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
 
-    // --- Input validation ---
     if (!email || typeof email !== "string") {
-      return NextResponse.json(
-        { success: false, error: "Email is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Email is required" }, { status: 400 });
     }
     if (!password || typeof password !== "string") {
-      return NextResponse.json(
-        { success: false, error: "Password is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Password is required" }, { status: 400 });
     }
 
-    // 1. Sign in via Supabase Auth
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => {
-                cookieStore.set(name, value, options);
-              });
-            } catch {
-              // Can't set cookies in some contexts — safe to ignore
-            }
-          },
-        },
-      }
-    );
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.toLowerCase().trim(),
-      password,
-    });
-
-    if (error || !data.user) {
-      return NextResponse.json(
-        { success: false, error: "Invalid email or password" },
-        { status: 401 }
-      );
-    }
-
-    // 2. Look up user in Prisma by Supabase UID
+    // 1. Find user in local DB
     const user = await prisma.user.findUnique({
-      where: { id: data.user.id },
+      where: { email: email.toLowerCase().trim() },
     });
 
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: "User account not found. Please contact admin." },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "Invalid email or password" }, { status: 401 });
     }
 
-    // 3. Determine redirect path based on role
+    // 2. Verify password with bcrypt
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return NextResponse.json({ success: false, error: "Invalid email or password" }, { status: 401 });
+    }
+
+    // 3. Create a signed JWT (7 day expiry)
+    const token = await new SignJWT({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      enrollmentNo: user.enrollmentNo ?? undefined,
+      department: user.department ?? undefined,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(getSecret());
+
+    // 4. Determine redirect path
     let redirectPath = "/dashboard";
-    if (user.role === "STUDENT") {
-      redirectPath = "/dashboard";
-    } else if (user.role === "SUPER_ADMIN") {
+    if (user.role === "SUPER_ADMIN") {
       redirectPath = "/dashboard/staff/super_admin";
-    } else {
+    } else if (user.role !== "STUDENT") {
       redirectPath = `/dashboard/staff/${user.role.toLowerCase()}`;
     }
 
-    // 4. Return user data (no sensitive fields)
-    return NextResponse.json({
+    // 5. Set httpOnly cookie and return user data
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -92,11 +70,18 @@ export async function POST(request: Request) {
       },
       redirectPath,
     });
+
+    response.cookies.set("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    return response;
   } catch (error) {
     console.error("Login Error:", error);
-    return NextResponse.json(
-      { success: false, error: "Authentication failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Authentication failed" }, { status: 500 });
   }
 }

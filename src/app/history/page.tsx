@@ -19,6 +19,7 @@ interface StudentApproval {
 
 interface StudentApplication {
   id: string;
+  type: 'NODUES' | 'NOC' | 'BONAFIDE';
   applicationNo: string;
   status: string;
   createdAt: string;
@@ -241,17 +242,21 @@ export default function HistoryPage() {
                     className="w-full text-left p-5 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-wrap">
-                      <span className="text-sm font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">
-                        {app.applicationNo}
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                        app.type === 'NODUES' ? 'bg-blue-50 text-blue-700' :
+                        app.type === 'NOC' ? 'bg-purple-50 text-purple-700' :
+                        'bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {app.type === 'NODUES' ? 'No Dues' : app.type}
+                      </span>
+                      <span className="text-sm font-mono font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-lg">
+                        #{app.applicationNo}
                       </span>
                       {statusBadge(app.status)}
                       <span className="text-sm text-gray-500">
                         Applied: {new Date(app.createdAt).toLocaleDateString("en-IN", {
                           day: "numeric", month: "short", year: "numeric"
                         })}
-                      </span>
-                      <span className="text-sm text-gray-400">
-                        {app.course}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">

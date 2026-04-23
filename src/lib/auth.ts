@@ -6,8 +6,10 @@ export interface UserSession {
   name: string;
   email: string;
   role: string;
+  status: string;
   enrollmentNo?: string;
   department?: string;
+  signatureUrl?: string;
 }
 
 const SESSION_KEY = "nodue_user_session";

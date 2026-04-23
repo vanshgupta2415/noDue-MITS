@@ -23,14 +23,14 @@ interface FormData {
   passOutYear: string;
   course: string;
   cgpa: string;
-  isHostelResident: boolean;
+  isHostelResident: string | boolean;
   hostelName: string;
   roomNumber: string;
-  cautionMoneyRefund: boolean;
+  cautionMoneyRefund: string | boolean;
   receiptNumber: string;
-  exitSurvey: boolean;
-  feesCleared: boolean;
-  projectCertSubmitted: boolean;
+  exitSurvey: string | boolean;
+  feesCleared: string | boolean;
+  projectCertSubmitted: string | boolean;
   feeReceipts: string;
   marksheet: string;
   bankDetails: string;
@@ -57,20 +57,34 @@ export default function ApplyNoDues() {
     passOutYear: "",
     course: "",
     cgpa: "",
-    isHostelResident: false,
+    isHostelResident: "No",
     hostelName: "",
     roomNumber: "",
-    cautionMoneyRefund: false,
+    cautionMoneyRefund: "NotApplied",
     receiptNumber: "",
-    exitSurvey: false,
-    feesCleared: false,
-    projectCertSubmitted: false,
+    exitSurvey: "Not Completed",
+    feesCleared: "Not Cleared",
+    projectCertSubmitted: "Not Submitted",
     feeReceipts: "",
     marksheet: "",
     bankDetails: "",
     collegeId: "",
     declaration: false,
   });
+
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [highestValidStep, setHighestValidStep] = useState(1);
+  const [dynamicFields, setDynamicFields] = useState<any[]>([]);
+  const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+  const [fetchingSchema, setFetchingSchema] = useState(true);
+  const [allFields, setAllFields] = useState<any[]>([]);
+
+  const getLabel = (name: string, fallback: string) => {
+    return allFields.find((f) => f.name === name)?.label || fallback;
+  };
+  const isRequired = (name: string) => {
+    return allFields.find((f) => f.name === name)?.required ?? true;
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,19 +98,39 @@ export default function ApplyNoDues() {
         enrollmentNo: user.enrollmentNo || "",
         department: user.department || "",
       }));
-    }
-  }, [user, loading]);
 
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [highestValidStep, setHighestValidStep] = useState(1);
+      // Fetch extra custom fields from form builder
+      const standardKeys = ["fullName","email","fatherName","phoneNumber","address","enrollmentNo","department","passOutYear","course","cgpa","isHostelResident","hostelName","roomNumber","cautionMoneyRefund","receiptNumber","exitSurvey","feesCleared","projectCertSubmitted","feeReceipts","marksheet","bankDetails","collegeId","declaration"];
+      
+      const loadSchema = () => {
+        fetch("/api/forms/nodues", { cache: "no-store" })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.success && Array.isArray(data.data?.schema)) {
+              setAllFields(data.data.schema);
+              const extras = (data.data.schema as any[]).filter((f) => !standardKeys.includes(f.name));
+              setDynamicFields(extras);
+              const initial: Record<string, any> = {};
+              extras.forEach((f: any) => { initial[f.name] = ""; });
+              setDynamicData(prev => ({ ...initial, ...prev })); // Preserve existing data if any
+            }
+          })
+          .catch(console.error)
+          .finally(() => setFetchingSchema(false));
+      };
+
+      loadSchema();
+
+      // Real-time update: refresh schema when window is focused
+      window.addEventListener("focus", loadSchema);
+      return () => window.removeEventListener("focus", loadSchema);
+    }
+  }, [user, loading, router]);
+
 
   // File upload state
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, { name: string; size: number }>>({});
-  const feeReceiptsRef = useRef<HTMLInputElement>(null);
-  const marksheetRef = useRef<HTMLInputElement>(null);
-  const bankDetailsRef = useRef<HTMLInputElement>(null);
-  const collegeIdRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (
     category: string,
@@ -140,6 +174,18 @@ export default function ApplyNoDues() {
     }
   };
 
+  const updateDynamic = (field: string, value: any) => {
+    setDynamicData((prev) => ({ ...prev, [field]: value }));
+    const errKey = `dynamic_${field}`;
+    if (fieldErrors[errKey]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[errKey];
+        return next;
+      });
+    }
+  };
+
   // Per-stage validation — returns errors map (empty = valid)
   const validateStep = (stepNum: number): Record<string, string> => {
     const errors: Record<string, string> = {};
@@ -157,6 +203,13 @@ export default function ApplyNoDues() {
           errors.phoneNumber = "Enter a valid phone number (min 10 digits)";
       }
       if (!formData.address.trim()) errors.address = "Address is required";
+
+      // Validate dynamic fields
+      dynamicFields.forEach((f) => {
+        if (f.required && !dynamicData[f.name]) {
+          errors[`dynamic_${f.name}`] = `${f.label} is required`;
+        }
+      });
     }
 
     if (stepNum === 2) {
@@ -251,6 +304,7 @@ export default function ApplyNoDues() {
           marksheet: formData.marksheet ? formData.marksheet.trim() : null,
           bankDetails: formData.bankDetails ? formData.bankDetails.trim() : null,
           collegeId: formData.collegeId ? formData.collegeId.trim() : null,
+          dynamicData,
         }),
       });
 
@@ -279,7 +333,7 @@ export default function ApplyNoDues() {
     }
   };
 
-  if (loading) {
+  if (loading || fetchingSchema) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="h-10 w-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -337,6 +391,87 @@ export default function ApplyNoDues() {
       setStep(targetStep);
     }
     // Can't jump forward past validated steps
+  };
+
+  const renderField = (name: string, value: any, onChange: (val: any) => void, error?: string, defaultType: string = "text", defaultOptions?: string[]) => {
+    const f = allFields.find(f => f.name === name);
+    const type = f?.type || defaultType;
+    const label = f?.label || name;
+    const required = f?.required ?? true;
+    const options = f?.options || defaultOptions || [];
+    const ic = inputClasses;
+    const iec = inputErrorClasses;
+    const lc = labelClasses;
+    const ec = errorTextClasses;
+    return (
+      <div>
+        <label className={lc}>{label}{required && " *"}</label>
+        {type === "select" ? (
+          <select className={error ? iec : ic} value={value?.toString() || ""} onChange={(e) => onChange(e.target.value)}>
+            <option value="">Select Option</option>
+            {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        ) : type === "textarea" ? (
+          <textarea className={error ? iec : ic} value={value} onChange={(e) => onChange(e.target.value)} rows={3} />
+        ) : type === "checkbox" ? (
+          <div className="flex items-center space-x-3 py-2 text-gray-700">
+            <input type="checkbox" className="h-4 w-4 text-blue-600 rounded" checked={value === true || value === "Yes" || value === "true"} onChange={(e) => onChange(e.target.checked)} />
+            <span className="text-sm">{label}</span>
+          </div>
+        ) : type === "file" ? (
+          <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+            <input 
+              type="file" 
+              className="hidden" 
+              id={`file-${name}`}
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const fd = new FormData();
+                   fd.append("file", file);
+                   fd.append("category", name);
+                   setUploading(prev => ({ ...prev, [name]: true }));
+                   const res = await fetch("/api/upload", { method: "POST", body: fd });
+                   const data = await res.json();
+                   if (data.success) {
+                     onChange(data.url);
+                   }
+                   setUploading(prev => ({ ...prev, [name]: false }));
+                }
+              }} 
+            />
+            {value ? (
+               <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                  <div className="flex items-center space-x-2">
+                    <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    <span className="text-sm text-emerald-800 font-medium truncate max-w-[200px]">Uploaded Successfully</span>
+                  </div>
+                  <button type="button" onClick={() => document.getElementById(`file-${name}`)?.click()} className="text-xs text-blue-600 font-bold hover:underline">Replace File</button>
+               </div>
+            ) : (
+               <button type="button" onClick={() => document.getElementById(`file-${name}`)?.click()} disabled={uploading[name]}
+                 className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-all font-medium disabled:opacity-50">
+                 {uploading[name] ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      <span>Uploading...</span>
+                    </>
+                 ) : (
+                    <>
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                      <span>Choose File</span>
+                    </>
+                 )}
+               </button>
+            )}
+          </div>
+        ) : (
+          <input type={type} className={error ? iec : ic} value={value} onChange={(e) => onChange(e.target.value)} />
+        )}
+        {error && <p className={ec}>{error}</p>}
+      </div>
+    );
   };
 
   return (
@@ -404,67 +539,59 @@ export default function ApplyNoDues() {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className={labelClasses}>Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    className={fieldErrors.fullName ? inputErrorClasses : inputClasses}
-                    placeholder="Enter your full name"
-                    value={formData.fullName}
-                    onChange={(e) => update("fullName", e.target.value)}
-                  />
-                  {fieldErrors.fullName && <p className={errorTextClasses}>{fieldErrors.fullName}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Email *</label>
-                  <input
-                    type="email"
-                    required
-                    className={fieldErrors.email ? inputErrorClasses : inputClasses}
-                    placeholder="name@mitsgwl.ac.in"
-                    value={formData.email}
-                    onChange={(e) => update("email", e.target.value)}
-                  />
-                  {fieldErrors.email && <p className={errorTextClasses}>{fieldErrors.email}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Father&apos;s Name *</label>
-                  <input
-                    type="text"
-                    required
-                    className={fieldErrors.fatherName ? inputErrorClasses : inputClasses}
-                    placeholder="Enter father's name"
-                    value={formData.fatherName}
-                    onChange={(e) => update("fatherName", e.target.value)}
-                  />
-                  {fieldErrors.fatherName && <p className={errorTextClasses}>{fieldErrors.fatherName}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    className={fieldErrors.phoneNumber ? inputErrorClasses : inputClasses}
-                    placeholder="+91 XXXXX XXXXX"
-                    value={formData.phoneNumber}
-                    onChange={(e) => update("phoneNumber", e.target.value)}
-                  />
-                  {fieldErrors.phoneNumber && <p className={errorTextClasses}>{fieldErrors.phoneNumber}</p>}
-                </div>
+                {allFields
+                  .filter(f => ["fullName", "email", "fatherName", "phoneNumber", "address"].includes(f.name))
+                  .map(f => (
+                    <div key={f.id} className={f.type === "textarea" ? "col-span-1 md:col-span-2" : ""}>
+                      {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
+                    </div>
+                  ))
+                }
               </div>
-              <div>
-                <label className={labelClasses}>Permanent Address *</label>
-                <textarea
-                  required
-                  rows={3}
-                  className={fieldErrors.address ? inputErrorClasses : inputClasses}
-                  placeholder="Enter your permanent address"
-                  value={formData.address}
-                  onChange={(e) => update("address", e.target.value)}
-                />
-                {fieldErrors.address && <p className={errorTextClasses}>{fieldErrors.address}</p>}
-              </div>
+
+              {dynamicFields.length > 0 && (
+                <div className="mt-6 pt-5 border-t border-gray-100">
+                  <h4 className="text-md font-semibold text-gray-800 mb-4">Additional Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {dynamicFields.map((field) => (
+                      <div key={field.id} className={field.type === "textarea" ? "col-span-1 md:col-span-2" : ""}>
+                        <label className={labelClasses}>
+                          {field.label} {field.required && "*"}
+                        </label>
+                        {field.type === "select" ? (
+                          <select
+                            className={fieldErrors[`dynamic_${field.name}`] ? inputErrorClasses : inputClasses}
+                            value={dynamicData[field.name] || ""}
+                            onChange={(e) => updateDynamic(field.name, e.target.value)}
+                          >
+                            <option value="">Select an option</option>
+                            {field.options?.map((opt: string) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : field.type === "textarea" ? (
+                          <textarea
+                            className={fieldErrors[`dynamic_${field.name}`] ? inputErrorClasses : inputClasses}
+                            value={dynamicData[field.name] || ""}
+                            onChange={(e) => updateDynamic(field.name, e.target.value)}
+                            rows={3}
+                          />
+                        ) : (
+                          <input
+                            type={field.type}
+                            className={fieldErrors[`dynamic_${field.name}`] ? inputErrorClasses : inputClasses}
+                            value={dynamicData[field.name] || ""}
+                            onChange={(e) => updateDynamic(field.name, e.target.value)}
+                          />
+                        )}
+                        {fieldErrors[`dynamic_${field.name}`] && (
+                          <p className={errorTextClasses}>{fieldErrors[`dynamic_${field.name}`]}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -480,204 +607,55 @@ export default function ApplyNoDues() {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className={labelClasses}>Enrollment Number *</label>
-                  <input
-                    type="text"
-                    required
-                    className={fieldErrors.enrollmentNo ? inputErrorClasses : inputClasses}
-                    placeholder="0108XX221XXX"
-                    value={formData.enrollmentNo}
-                    onChange={(e) => update("enrollmentNo", e.target.value)}
-                  />
-                  {fieldErrors.enrollmentNo && <p className={errorTextClasses}>{fieldErrors.enrollmentNo}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Department *</label>
-                  <select
-                    className={fieldErrors.department ? inputErrorClasses : inputClasses}
-                    value={formData.department}
-                    onChange={(e) => update("department", e.target.value)}
-                  >
-                    <option value="">Select Department</option>
-                    <option value="CSE">Computer Science & Engineering</option>
-                    <option value="IT">Information Technology</option>
-                    <option value="ECE">Electronics & Communication</option>
-                    <option value="EE">Electrical Engineering</option>
-                    <option value="ME">Mechanical Engineering</option>
-                    <option value="CE">Civil Engineering</option>
-                  </select>
-                  {fieldErrors.department && <p className={errorTextClasses}>{fieldErrors.department}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Pass Out Year *</label>
-                  <input
-                    type="number"
-                    required
-                    className={fieldErrors.passOutYear ? inputErrorClasses : inputClasses}
-                    placeholder="2026"
-                    value={formData.passOutYear}
-                    onChange={(e) => update("passOutYear", e.target.value)}
-                  />
-                  {fieldErrors.passOutYear && <p className={errorTextClasses}>{fieldErrors.passOutYear}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>Course *</label>
-                  <select
-                    className={fieldErrors.course ? inputErrorClasses : inputClasses}
-                    value={formData.course}
-                    onChange={(e) => update("course", e.target.value)}
-                  >
-                    <option value="">Select Course</option>
-                    <option value="B.Tech">B.Tech</option>
-                    <option value="M.Tech">M.Tech</option>
-                    <option value="MBA">MBA</option>
-                    <option value="MCA">MCA</option>
-                    <option value="PhD">PhD</option>
-                  </select>
-                  {fieldErrors.course && <p className={errorTextClasses}>{fieldErrors.course}</p>}
-                </div>
-                <div>
-                  <label className={labelClasses}>CGPA *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="10"
-                    required
-                    className={fieldErrors.cgpa ? inputErrorClasses : inputClasses}
-                    placeholder="8.50"
-                    value={formData.cgpa}
-                    onChange={(e) => update("cgpa", e.target.value)}
-                  />
-                  {fieldErrors.cgpa && <p className={errorTextClasses}>{fieldErrors.cgpa}</p>}
-                </div>
+                {allFields
+                  .filter(f => ["enrollmentNo", "department", "course", "cgpa", "passOutYear"].includes(f.name))
+                  .map(f => (
+                    <div key={f.id}>
+                      {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
+                    </div>
+                  ))
+                }
               </div>
             </div>
           )}
 
           {/* Stage 3: Hostel & Caution Money & Prerequisites */}
           {step === 3 && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-100 pb-3">
-                Hostel & Prerequisites
-              </h3>
-              {Object.keys(fieldErrors).length > 0 && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
-                  Please complete all required items before proceeding.
-                </div>
-              )}
-
-              {/* Hostel Resident */}
-              <div className="bg-gray-50 p-5 rounded-xl space-y-4">
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="hostel"
-                    className="h-5 w-5 text-blue-600 rounded"
-                    checked={formData.isHostelResident}
-                    onChange={(e) => update("isHostelResident", e.target.checked)}
-                  />
-                  <label htmlFor="hostel" className="text-gray-700 font-medium">
-                    Are you a Hostel Resident?
-                  </label>
-                </div>
-                {formData.isHostelResident && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pl-8">
-                    <div>
-                      <label className={labelClasses}>Hostel Name *</label>
-                      <input
-                        type="text"
-                        className={fieldErrors.hostelName ? inputErrorClasses : inputClasses}
-                        placeholder="Enter hostel name"
-                        value={formData.hostelName}
-                        onChange={(e) => update("hostelName", e.target.value)}
-                      />
-                      {fieldErrors.hostelName && <p className={errorTextClasses}>{fieldErrors.hostelName}</p>}
-                    </div>
-                    <div>
-                      <label className={labelClasses}>Room Number *</label>
-                      <input
-                        type="text"
-                        className={fieldErrors.roomNumber ? inputErrorClasses : inputClasses}
-                        placeholder="Enter room number"
-                        value={formData.roomNumber}
-                        onChange={(e) => update("roomNumber", e.target.value)}
-                      />
-                      {fieldErrors.roomNumber && <p className={errorTextClasses}>{fieldErrors.roomNumber}</p>}
-                    </div>
+            <div className="space-y-8">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4">Hostel / Residential Status</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-1 md:col-span-2">
+                    {renderField("isHostelResident", formData.isHostelResident, (val) => update("isHostelResident", val), fieldErrors.isHostelResident)}
                   </div>
-                )}
+
+                  {formData.isHostelResident === "Yes" && (
+                    <>
+                      {allFields
+                        .filter(f => ["hostelName", "roomNumber", "cautionMoneyRefund"].includes(f.name))
+                        .map(f => (
+                          <div key={f.id} className={f.name === "cautionMoneyRefund" ? "col-span-1 md:col-span-2" : ""}>
+                            {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
+                          </div>
+                        ))
+                      }
+                    </>
+                  )}
+                </div>
               </div>
 
-              {/* Caution Money */}
-              <div className="bg-gray-50 p-5 rounded-xl space-y-4">
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    id="caution"
-                    className="h-5 w-5 text-blue-600 rounded"
-                    checked={formData.cautionMoneyRefund}
-                    onChange={(e) => update("cautionMoneyRefund", e.target.checked)}
-                  />
-                  <label htmlFor="caution" className="text-gray-700 font-medium">
-                    Caution Money Refund?
-                  </label>
+              <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-6">
+                <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-4">Final Submission Requirements</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {allFields
+                    .filter(f => ["receiptNumber", "exitSurvey", "feesCleared", "projectCertSubmitted"].includes(f.name))
+                    .map(f => (
+                      <div key={f.id}>
+                        {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
+                      </div>
+                    ))
+                  }
                 </div>
-                {formData.cautionMoneyRefund && (
-                  <div className="pl-8 mt-3">
-                    <label className={labelClasses}>Receipt Number *</label>
-                    <input
-                      type="text"
-                      className={`${fieldErrors.receiptNumber ? inputErrorClasses : inputClasses} max-w-sm`}
-                      placeholder="Enter receipt number"
-                      value={formData.receiptNumber}
-                      onChange={(e) => update("receiptNumber", e.target.value)}
-                    />
-                    {fieldErrors.receiptNumber && <p className={errorTextClasses}>{fieldErrors.receiptNumber}</p>}
-                  </div>
-                )}
-              </div>
-
-              {/* Mandatory Prerequisites */}
-              <div className={`p-5 rounded-xl space-y-3 border ${
-                fieldErrors.exitSurvey || fieldErrors.feesCleared || fieldErrors.projectCertSubmitted
-                  ? "bg-red-50 border-red-200"
-                  : "bg-blue-50 border-blue-200"
-              }`}>
-                <p className="text-sm font-semibold text-blue-800 mb-2">
-                  Mandatory Prerequisites *
-                </p>
-                {(fieldErrors.exitSurvey || fieldErrors.feesCleared || fieldErrors.projectCertSubmitted) && (
-                  <p className={errorTextClasses}>All prerequisites must be checked</p>
-                )}
-                <label className="flex items-center space-x-3 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 rounded"
-                    checked={formData.exitSurvey}
-                    onChange={(e) => update("exitSurvey", e.target.checked)}
-                  />
-                  <span>Exit Survey Completed ✔</span>
-                </label>
-                <label className="flex items-center space-x-3 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 rounded"
-                    checked={formData.feesCleared}
-                    onChange={(e) => update("feesCleared", e.target.checked)}
-                  />
-                  <span>All Fees Cleared ✔</span>
-                </label>
-                <label className="flex items-center space-x-3 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 rounded"
-                    checked={formData.projectCertSubmitted}
-                    onChange={(e) => update("projectCertSubmitted", e.target.checked)}
-                  />
-                  <span>Project/Internship Certificate Submitted ✔</span>
-                </label>
               </div>
             </div>
           )}
@@ -698,245 +676,15 @@ export default function ApplyNoDues() {
                 </ol>
               </div>
               <div className="grid grid-cols-1 gap-5">
-                {/* Fee Receipts Upload */}
-                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
-                  <label className={labelClasses}>Fee Receipts</label>
-                  <p className="text-xs text-gray-400 mb-3">Upload your fee payment receipts</p>
-                  <input
-                    ref={feeReceiptsRef}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload("feeReceipts", "feeReceipts", file);
-                    }}
-                  />
-                  {uploadedFiles.feeReceipts || formData.feeReceipts ? (
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm text-emerald-800 font-medium">
-                          {uploadedFiles.feeReceipts?.name || "Previously uploaded"}
-                        </span>
-                        {uploadedFiles.feeReceipts && (
-                          <span className="text-xs text-emerald-600">
-                            ({(uploadedFiles.feeReceipts.size / 1024).toFixed(1)} KB)
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => feeReceiptsRef.current?.click()}
-                        className="text-xs text-emerald-700 font-semibold hover:text-emerald-800"
-                      >
-                        Replace
-                      </button>
+                {allFields
+                  .filter(f => ["feeReceipts", "marksheet", "bankDetails", "collegeId"].includes(f.name))
+                  .map(f => (
+                    <div key={f.id}>
+                      <p className="text-xs text-gray-400 mb-3 ml-1">Upload {f.label}</p>
+                      {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => feeReceiptsRef.current?.click()}
-                      disabled={uploading.feeReceipts}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all disabled:opacity-50"
-                    >
-                      {uploading.feeReceipts ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          <span>Uploading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                          <span className="font-medium">Choose File</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {fieldErrors.feeReceipts && <p className={errorTextClasses}>{fieldErrors.feeReceipts}</p>}
-                </div>
-
-                {/* Marksheet Upload */}
-                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
-                  <label className={labelClasses}>Previous Marksheet</label>
-                  <p className="text-xs text-gray-400 mb-3">Upload your previous semester marksheet</p>
-                  <input
-                    ref={marksheetRef}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload("marksheet", "marksheet", file);
-                    }}
-                  />
-                  {uploadedFiles.marksheet || formData.marksheet ? (
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm text-emerald-800 font-medium">
-                          {uploadedFiles.marksheet?.name || "Previously uploaded"}
-                        </span>
-                        {uploadedFiles.marksheet && (
-                          <span className="text-xs text-emerald-600">
-                            ({(uploadedFiles.marksheet.size / 1024).toFixed(1)} KB)
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => marksheetRef.current?.click()}
-                        className="text-xs text-emerald-700 font-semibold hover:text-emerald-800"
-                      >
-                        Replace
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => marksheetRef.current?.click()}
-                      disabled={uploading.marksheet}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all disabled:opacity-50"
-                    >
-                      {uploading.marksheet ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          <span>Uploading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                          <span className="font-medium">Choose File</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {fieldErrors.marksheet && <p className={errorTextClasses}>{fieldErrors.marksheet}</p>}
-                </div>
-
-                {/* Bank Details Upload */}
-                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
-                  <label className={labelClasses}>Bank Passbook / Cancelled Cheque</label>
-                  <p className="text-xs text-gray-400 mb-3">Upload your bank passbook or cancelled cheque</p>
-                  <input
-                    ref={bankDetailsRef}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload("bankDetails", "bankDetails", file);
-                    }}
-                  />
-                  {uploadedFiles.bankDetails || formData.bankDetails ? (
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm text-emerald-800 font-medium">
-                          {uploadedFiles.bankDetails?.name || "Previously uploaded"}
-                        </span>
-                        {uploadedFiles.bankDetails && (
-                          <span className="text-xs text-emerald-600">
-                            ({(uploadedFiles.bankDetails.size / 1024).toFixed(1)} KB)
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => bankDetailsRef.current?.click()}
-                        className="text-xs text-emerald-700 font-semibold hover:text-emerald-800"
-                      >
-                        Replace
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => bankDetailsRef.current?.click()}
-                      disabled={uploading.bankDetails}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all disabled:opacity-50"
-                    >
-                      {uploading.bankDetails ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          <span>Uploading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                          <span className="font-medium">Choose File</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {fieldErrors.bankDetails && <p className={errorTextClasses}>{fieldErrors.bankDetails}</p>}
-                </div>
-
-                {/* College ID Upload */}
-                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
-                  <label className={labelClasses}>College ID Proof</label>
-                  <p className="text-xs text-gray-400 mb-3">Upload your college identity card or proof</p>
-                  <input
-                    ref={collegeIdRef}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload("collegeId", "collegeId", file);
-                    }}
-                  />
-                  {uploadedFiles.collegeId || formData.collegeId ? (
-                    <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span className="text-sm text-emerald-800 font-medium">
-                          {uploadedFiles.collegeId?.name || "Previously uploaded"}
-                        </span>
-                        {uploadedFiles.collegeId && (
-                          <span className="text-xs text-emerald-600">
-                            ({(uploadedFiles.collegeId.size / 1024).toFixed(1)} KB)
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => collegeIdRef.current?.click()}
-                        className="text-xs text-emerald-700 font-semibold hover:text-emerald-800"
-                      >
-                        Replace
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => collegeIdRef.current?.click()}
-                      disabled={uploading.collegeId}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50/50 transition-all disabled:opacity-50"
-                    >
-                      {uploading.collegeId ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                          <span>Uploading...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                          <span className="font-medium">Choose File</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {fieldErrors.collegeId && <p className={errorTextClasses}>{fieldErrors.collegeId}</p>}
-                </div>
+                  ))
+                }
               </div>
             </div>
           )}
@@ -954,11 +702,11 @@ export default function ApplyNoDues() {
                   Personal Details
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-gray-500">Name:</span> <span className="font-medium text-gray-900">{formData.fullName}</span></div>
-                  <div><span className="text-gray-500">Email:</span> <span className="font-medium text-gray-900">{formData.email}</span></div>
-                  <div><span className="text-gray-500">Father:</span> <span className="font-medium text-gray-900">{formData.fatherName}</span></div>
-                  <div><span className="text-gray-500">Phone:</span> <span className="font-medium text-gray-900">{formData.phoneNumber}</span></div>
-                  <div className="col-span-2"><span className="text-gray-500">Address:</span> <span className="font-medium text-gray-900">{formData.address}</span></div>
+                  <div><span className="text-gray-500">{getLabel("fullName", "Name")}:</span> <span className="font-medium text-gray-900">{formData.fullName}</span></div>
+                  <div><span className="text-gray-500">{getLabel("email", "Email")}:</span> <span className="font-medium text-gray-900">{formData.email}</span></div>
+                  <div><span className="text-gray-500">{getLabel("fatherName", "Father")}:</span> <span className="font-medium text-gray-900">{formData.fatherName}</span></div>
+                  <div><span className="text-gray-500">{getLabel("phoneNumber", "Phone")}:</span> <span className="font-medium text-gray-900">{formData.phoneNumber}</span></div>
+                  <div className="col-span-2"><span className="text-gray-500">{getLabel("address", "Address")}:</span> <span className="font-medium text-gray-900">{formData.address}</span></div>
                 </div>
               </div>
 
@@ -968,11 +716,11 @@ export default function ApplyNoDues() {
                   Academic Details
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-gray-500">Enrollment:</span> <span className="font-medium text-gray-900">{formData.enrollmentNo}</span></div>
-                  <div><span className="text-gray-500">Department:</span> <span className="font-medium text-gray-900">{formData.department}</span></div>
-                  <div><span className="text-gray-500">Course:</span> <span className="font-medium text-gray-900">{formData.course}</span></div>
-                  <div><span className="text-gray-500">Pass Out:</span> <span className="font-medium text-gray-900">{formData.passOutYear}</span></div>
-                  <div><span className="text-gray-500">CGPA:</span> <span className="font-medium text-gray-900">{formData.cgpa}</span></div>
+                  <div><span className="text-gray-500">{getLabel("enrollmentNo", "Enrollment")}:</span> <span className="font-medium text-gray-900">{formData.enrollmentNo}</span></div>
+                  <div><span className="text-gray-500">{getLabel("department", "Department")}:</span> <span className="font-medium text-gray-900">{formData.department}</span></div>
+                  <div><span className="text-gray-500">{getLabel("course", "Course")}:</span> <span className="font-medium text-gray-900">{formData.course}</span></div>
+                  <div><span className="text-gray-500">{getLabel("passOutYear", "Pass Out")}:</span> <span className="font-medium text-gray-900">{formData.passOutYear}</span></div>
+                  <div><span className="text-gray-500">{getLabel("cgpa", "CGPA")}:</span> <span className="font-medium text-gray-900">{formData.cgpa}</span></div>
                 </div>
               </div>
 
@@ -982,14 +730,14 @@ export default function ApplyNoDues() {
                   Hostel & Caution Money
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-gray-500">Hostel Resident:</span> <span className="font-medium text-gray-900">{formData.isHostelResident ? "Yes" : "No"}</span></div>
-                  {formData.isHostelResident && (
+                  <div><span className="text-gray-500">{getLabel("isHostelResident", "Hostel Resident")}:</span> <span className="font-medium text-gray-900">{formData.isHostelResident?.toString()}</span></div>
+                  {formData.isHostelResident === "Yes" && (
                     <>
-                      <div><span className="text-gray-500">Hostel:</span> <span className="font-medium text-gray-900">{formData.hostelName}</span></div>
-                      <div><span className="text-gray-500">Room:</span> <span className="font-medium text-gray-900">{formData.roomNumber}</span></div>
+                      <div><span className="text-gray-500">{getLabel("hostelName", "Hostel")}:</span> <span className="font-medium text-gray-900">{formData.hostelName}</span></div>
+                      <div><span className="text-gray-500">{getLabel("roomNumber", "Room")}:</span> <span className="font-medium text-gray-900">{formData.roomNumber}</span></div>
                     </>
                   )}
-                  <div><span className="text-gray-500">Caution Refund:</span> <span className="font-medium text-gray-900">{formData.cautionMoneyRefund ? "Yes" : "No"}</span></div>
+                  <div><span className="text-gray-500">{getLabel("cautionMoneyRefund", "Caution Refund")}:</span> <span className="font-medium text-gray-900">{formData.cautionMoneyRefund?.toString()}</span></div>
                 </div>
               </div>
 

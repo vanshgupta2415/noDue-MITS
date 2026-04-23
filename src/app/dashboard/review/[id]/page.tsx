@@ -27,8 +27,8 @@ interface Application {
   collegeId: string | null;
   currentStage: number;
   createdAt: string;
-  updatedAt: string;
   approvals: Approval[];
+  dynamicData?: Record<string, any>;
 }
 
 interface Approval {
@@ -394,6 +394,25 @@ export default function ApplicationReviewPage({
                       </p>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Details */}
+            {application.dynamicData && Object.keys(application.dynamicData).length > 0 && (
+              <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">
+                  Additional Details
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {Object.entries(application.dynamicData).map(([key, val]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        {key}
+                      </label>
+                      <p className="text-gray-900 font-medium">{val != null && val !== "" ? String(val) : "N/A"}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

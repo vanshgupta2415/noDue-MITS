@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>NOC Letter - MITS Gwalior</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Times New Roman", Times, serif;
+      background: #fff;
+    }
+
+    .page {
+      width: 794px;
+      min-height: 1123px;
+      background: #fff;
+      padding: 0 50px 50px 50px;
+      position: relative;
+    }
+
+    /* HEADER */
+    .header {
+      width: calc(100% + 100px);
+      margin-left: -50px;
+      margin-bottom: 18px;
+    }
+    .header img {
+      width: 100%;
+      display: block;
+    }
+
+    /* CONTACT BAR */
+    .contact-bar {
+      text-align: center;
+      font-size: 11.5px;
+      margin-bottom: 10px;
+      color: #111;
+    }
+
+    /* DIVIDER */
+    .divider {
+      border: none;
+      border-top: 2px solid #555;
+      margin-bottom: 12px;
+    }
+
+    /* REF & DATE ROW */
+    .ref-date {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 18px;
+      color: #111;
+    }
+
+    /* ADDRESSEE */
+    .addressee {
+      font-size: 12.5px;
+      line-height: 1.7;
+      margin-bottom: 16px;
+      color: #111;
+    }
+
+    /* SALUTATION */
+    .salutation {
+      font-size: 12.5px;
+      font-weight: bold;
+      margin-bottom: 14px;
+      color: #111;
+    }
+
+    /* BODY TEXT */
+    .body-text {
+      font-size: 12.5px;
+      line-height: 1.65;
+      text-align: justify;
+      margin-bottom: 14px;
+      color: #111;
+    }
+
+    /* TABLE */
+    .student-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      font-size: 12.5px;
+    }
+    .student-table th,
+    .student-table td {
+      border: 1px solid #555;
+      padding: 10px 14px;
+      text-align: center;
+      color: #111;
+    }
+    .student-table th {
+      font-weight: bold;
+      background: #fff;
+    }
+
+    /* CLOSING */
+    .closing {
+      font-size: 12.5px;
+      margin-bottom: 6px;
+      color: #111;
+    }
+
+    /* SIGNATURE BLOCK */
+    .signature-block {
+      margin-top: 10px;
+      font-size: 12.5px;
+      color: #111;
+    }
+    .signature-block img {
+      display: block;
+      height: 60px;
+      margin-bottom: 2px;
+    }
+    .signature-block .sig-name {
+      font-weight: bold;
+    }
+    .signature-block .sig-title {
+      font-weight: bold;
+    }
+
+    /* QR SECTION */
+    .qr-section {
+      margin-top: 18px;
+      font-size: 12.5px;
+      color: #111;
+    }
+    .qr-section img.qr {
+      display: block;
+      width: 80px;
+      height: 80px;
+      margin-bottom: 6px;
+    }
+    .qr-label {
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .contact-note {
+      font-size: 12px;
+      margin-bottom: 50px;
+      color: #111;
+    }
+
+    /* FOOTER DECLARATION */
+    .footer-declaration {
+      font-style: italic;
+      font-size: 11px;
+      color: #111;
+      position: absolute;
+      bottom: 28px;
+      left: 50px;
+      right: 50px;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Header image -->
+    <div class="header">
+      <img src="{{headerImage}}" alt="MITS Gwalior Header" />
+    </div>
+
+    <!-- Contact bar -->
+    <div class="contact-bar">
+      {{certContactLine}}
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Ref & Date -->
+    <div class="ref-date">
+      <span>Ref.: {{refNo}}</span>
+      <span>Date: {{date}}</span>
+    </div>
+
+    <!-- Addressee -->
+    <div class="addressee">
+      To,<br />
+      {{#if receiverName}}{{receiverName}}<br />{{/if}}
+      {{#if receiverDesignation}}{{receiverDesignation}}<br />{{/if}}
+      {{companyName}}<br />
+      {{companyLocation}}
+    </div>
+
+    <!-- Salutation -->
+    <div class="salutation">{{certSalutation}}</div>
+
+    <!-- Body paragraph 1 -->
+    <div class="body-text">
+      {{certPara1}}
+    </div>
+
+    <!-- Body paragraph 2 -->
+    <div class="body-text">
+      {{certPara2}}
+    </div>
+
+    <!-- Student Table -->
+    <table class="student-table">
+      <thead>
+        <tr>
+          <th>S.No.</th>
+          <th>Name of the Student</th>
+          <th>Enrollment No.</th>
+          <th>Course-branch</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1.</td>
+          <td>{{studentName}}</td>
+          <td>{{rollNumber}}</td>
+          <td>{{degree}} - {{branch}}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Closing -->
+    <div class="closing">{{certClosingLine1}}</div>
+    <br />
+    <div class="closing">{{certClosingLine2}}</div>
+
+    <!-- Signature block -->
+    <div class="signature-block">
+      <img src="{{signatureImage}}" alt="Signature" />
+      <div class="sig-name">({{signerName}})</div>
+      <div class="sig-title">{{certSignerTitle}}</div>
+    </div>
+
+    <!-- QR Section -->
+    <div class="qr-section">
+      <img class="qr" src="{{qrImage}}" alt="QR Code" />
+      <div class="qr-label">{{certScanLabel}}</div>
+      <div class="contact-note">{{certContactNote}}</div>
+    </div>
+
+    <!-- Footer Declaration -->
+    <div class="footer-declaration">
+      <strong>Important Declaration:</strong> {{certFooterDeclaration}}
+    </div>
+
+  </div>
+</body>
+</html>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { getRoleName } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
+import { useSystemConfig } from "@/hooks/useSystemConfig";
 
 // Map every role to its department name (used in the approval records) and stage number
 const ROLE_TO_DEPT: Record<string, { department: string; stage: number }> = {
@@ -18,50 +19,6 @@ const ROLE_TO_DEPT: Record<string, { department: string; stage: number }> = {
   accounts_officer: { department: "Accounts Office", stage: 9 },
 };
 
-// Institute departments — value is stored in DB, label is shown in UI
-const DEPARTMENTS = [
-  { value: "CE", label: "Civil Engineering" },
-  { value: "ME", label: "Mechanical Engineering" },
-  { value: "EE", label: "Electrical Engineering" },
-  { value: "ECE", label: "Electronics Engineering" },
-  { value: "CSE", label: "Computer Science & Engineering" },
-  { value: "IT", label: "Information Technology" },
-  { value: "CAI", label: "Centre for Artificial Intelligence" },
-  { value: "CIoT", label: "Centre for Internet of Things" },
-  { value: "EMC", label: "Engineering Mathematics & Computing" },
-  { value: "CCST", label: "Centre for Computer Science and Technology" },
-  { value: "CH", label: "Chemical Engineering" },
-  { value: "ARCH", label: "Architecture & Planning" },
-  { value: "AS", label: "Applied Science" },
-  { value: "HUM", label: "Humanities and Management" },
-  { value: "ETCE", label: "Electronics and Telecommunications Engineering" },
-  { value: "MCA", label: "MCA" },
-  { value: "MBA", label: "MBA" },
-  { value: "PHY", label: "Physics" },
-  { value: "MATH", label: "Mathematics" },
-];
-
-// Lookup helper: code → label
-const DEPT_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  DEPARTMENTS.map((d) => [d.value, d.label])
-);
-
-// Roles that require a department to be selected
-const DEPT_SPECIFIC_ROLES = ["FACULTY", "CLASS_COORDINATOR", "HOD"];
-
-// All roles that can be assigned by Super Admin
-const ASSIGNABLE_ROLES = [
-  { value: "STUDENT", label: "Student" },
-  { value: "FACULTY", label: "Faculty" },
-  { value: "CLASS_COORDINATOR", label: "Class Coordinator" },
-  { value: "HOD", label: "Head of Department" },
-  { value: "HOSTEL_WARDEN", label: "Hostel Warden" },
-  { value: "LIBRARY_ADMIN", label: "Library Admin" },
-  { value: "WORKSHOP_ADMIN", label: "Workshop Admin" },
-  { value: "TP_OFFICER", label: "T&P Officer" },
-  { value: "GENERAL_OFFICE", label: "General Office" },
-  { value: "ACCOUNTS_OFFICER", label: "Accounts Officer" },
-];
 
 interface SearchedUser {
   id: string;
@@ -90,6 +47,10 @@ interface ApprovalItem {
 
 export default function StaffDashboard({ params }: { params: Promise<{ role: string }> }) {
   const { role } = use(params);
+  const { departments, roles, universalRoles, departmentRoles, loadingConfig, reloadConfig } = useSystemConfig();
+  const DEPT_LABEL_MAP: Record<string, string> = Object.fromEntries(departments.map(d => [d.value, d.label]));
+  const DEPT_SPECIFIC_ROLES = departmentRoles.map(r => r.value);
+  const ASSIGNABLE_ROLES = roles;
   const { user, loading } = useAuth();
   const router = useRouter();
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
@@ -126,6 +87,13 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
     roleOccupants: { name: string; role: string; department: string | null }[];
   } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [showAddRoleForm, setShowAddRoleForm] = useState(false);
+  const [showAddDeptForm, setShowAddDeptForm] = useState(false);
+  
+  // Registration Approvals (General Office only)
+  const [registrations, setRegistrations] = useState<SearchedUser[]>([]);
+  const [fetchingRegistrations, setFetchingRegistrations] = useState(false);
+  const [registrationMessage, setRegistrationMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const deptInfo = ROLE_TO_DEPT[role];
   const roleName = getRoleName(role.toUpperCase());
@@ -142,6 +110,9 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
     if (deptInfo) {
       fetchPendingApprovals();
       fetchApprovalStats();
+      if (role === "general_office") {
+        fetchPendingRegistrations();
+      }
     } else {
       // Super Admin or unknown role — no approvals to fetch
       setFetching(false);
@@ -150,6 +121,44 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
       }
     }
   }, [user, loading, role]);
+
+  const fetchPendingRegistrations = async () => {
+    setFetchingRegistrations(true);
+    try {
+      const res = await fetch("/api/admin/registrations");
+      const data = await res.json();
+      if (data.success) {
+        setRegistrations(data.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch registrations:", err);
+    } finally {
+      setFetchingRegistrations(false);
+    }
+  };
+
+  const handleRegistrationAction = async (userId: string, action: "APPROVE" | "REJECT") => {
+    setActionLoading(userId);
+    setRegistrationMessage(null);
+    try {
+      const res = await fetch("/api/admin/registrations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, action }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRegistrationMessage({ type: "success", text: data.message });
+        setRegistrations((prev) => prev.filter((u) => u.id !== userId));
+      } else {
+        setRegistrationMessage({ type: "error", text: data.error || "Action failed" });
+      }
+    } catch {
+      setRegistrationMessage({ type: "error", text: "Something went wrong" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const fetchAdminStats = async () => {
     setStatsLoading(true);
@@ -221,7 +230,7 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
     }
   };
 
-  if (loading) {
+  if (loading || loadingConfig) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -346,6 +355,8 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
         <PageHeader title="Super Admin Panel" subtitle="Manage user roles and system administration" />
         <div className="p-6 lg:p-8 space-y-6">
 
+
+
           {/* Status Message */}
           {adminMessage && (
             <div className={`p-4 rounded-xl text-sm font-medium border flex items-center space-x-2 ${
@@ -455,14 +466,7 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
             <h3 className="text-base font-bold text-gray-900 mb-1">Universal Roles</h3>
             <p className="text-sm text-gray-400 mb-4">Click a role to assign it to a user by email.</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {[
-                { value: "HOSTEL_WARDEN", label: "Hostel Warden" },
-                { value: "LIBRARY_ADMIN", label: "Library Admin" },
-                { value: "WORKSHOP_ADMIN", label: "Workshop Admin" },
-                { value: "TP_OFFICER", label: "T&P Officer" },
-                { value: "GENERAL_OFFICE", label: "General Office" },
-                { value: "ACCOUNTS_OFFICER", label: "Accounts Officer" },
-              ].map((r) => {
+              {universalRoles.map((r) => {
                 const occupants = adminStats?.roleOccupants.filter((o) => o.role === r.value) ?? [];
                 const isActive = quickAssignRole === r.value;
                 return (
@@ -489,6 +493,22 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
                       )}
                       <p className="text-xs text-gray-600 font-semibold mt-1">{r.label}</p>
                     </button>
+                    {!["STUDENT", "FACULTY", "HOD", "SUPER_ADMIN", "CLASS_COORDINATOR"].includes(r.value) && (
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if(!confirm(`Delete the role ${r.label}?`)) return;
+                          const res = await fetch(`/api/system/roles?value=${r.value}`, { method: 'DELETE' });
+                          if(res.ok) {
+                            setAdminMessage({ type: "success", text: `Role ${r.label} deleted.` });
+                            reloadConfig();
+                          }
+                        }}
+                        className="w-full py-1 text-[10px] font-bold text-red-400 hover:text-red-600 uppercase tracking-tighter transition-colors"
+                      >
+                        Remove Role
+                      </button>
+                    )}
                     {isActive && (
                       <div className="flex gap-2">
                         <input
@@ -512,35 +532,149 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
                   </div>
                 );
               })}
+
+              {/* Add Role Inline */}
+              <div className="border border-dashed border-gray-300 rounded-xl p-3 bg-gray-50/30">
+                {!showAddRoleForm ? (
+                  <button 
+                    onClick={() => setShowAddRoleForm(true)}
+                    className="w-full h-full flex flex-col items-center justify-center space-y-2 py-4 group hover:bg-gray-100/50 transition-colors"
+                  >
+                    <div className="h-8 w-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Add New Role</span>
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Create Role</p>
+                      <button onClick={() => setShowAddRoleForm(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                       <input 
+                        id="add-role-label" 
+                        autoFocus
+                        className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all shadow-sm" 
+                        placeholder="e.g. Finance Admin" 
+                      />
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={async () => {
+                            const labelInput = document.getElementById('add-role-label') as HTMLInputElement;
+                            const labelV = labelInput.value;
+                            if(!labelV) return;
+                            const value = labelV.toUpperCase().replace(/\s+/g, '_');
+                            await fetch('/api/system/roles', { 
+                              method: 'POST', 
+                              body: JSON.stringify({label: labelV, value, isUniversal: true})
+                            });
+                            labelInput.value = ''; reloadConfig(); setShowAddRoleForm(false);
+                            setAdminMessage({ type: "success", text: `Role ${labelV} created.` });
+                          }} 
+                          className="flex-1 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                        >
+                          Save Role
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-
           {/* ─── Department-Based Role Distribution ─── */}
           <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm p-6">
             <h3 className="text-base font-bold text-gray-900 mb-1">Department-Based Roles</h3>
             <p className="text-sm text-gray-400 mb-4">Select a department, then assign HOD, Faculty, or Class Coordinator.</p>
-            <select
-              value={selectedDeptForRoles}
-              onChange={(e) => {
-                setSelectedDeptForRoles(e.target.value);
-                setQuickAssignRole(null);
-                setQuickAssignEmail("");
-              }}
-              className="block w-full sm:w-80 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900 text-sm mb-4"
-            >
-              <option value="">Select a department...</option>
-              {DEPARTMENTS.map((dept) => (
-                <option key={dept.value} value={dept.value}>{dept.label}</option>
-              ))}
-            </select>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 mb-6">
+              <div className="flex-1 flex gap-2 w-full">
+                <select
+                  value={selectedDeptForRoles}
+                  onChange={(e) => {
+                    setSelectedDeptForRoles(e.target.value);
+                    setQuickAssignRole(null);
+                    setQuickAssignEmail("");
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900 text-sm"
+                >
+                  <option value="">Select a department...</option>
+                  {departments.map((dept) => (
+                    <option key={dept.value} value={dept.value}>{dept.label} ({dept.value})</option>
+                  ))}
+                </select>
+                {selectedDeptForRoles && (
+                  <button 
+                    onClick={async () => {
+                      if(!confirm(`Remove the ${selectedDeptForRoles} department? This will NOT delete sub-roles but will remove it from the list.`)) return;
+                      const res = await fetch(`/api/system/departments?value=${selectedDeptForRoles}`, { method: 'DELETE' });
+                      if(res.ok) {
+                        setAdminMessage({ type: "success", text: `Department ${selectedDeptForRoles} removed.` });
+                        setSelectedDeptForRoles(""); reloadConfig();
+                      }
+                    }}
+                    className="px-3 py-2 bg-white border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-xs font-bold transition-all shrink-0"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              
+              {/* Add Department Inline */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="h-10 w-[1px] bg-gray-200 mx-2 hidden sm:block"></div>
+                {!showAddDeptForm ? (
+                  <button 
+                    onClick={() => setShowAddDeptForm(true)}
+                    className="h-10 px-4 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all flex items-center space-x-2 shrink-0 shadow-sm"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                    <span>New Dept</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <input 
+                      id="add-dept-label" 
+                      autoFocus
+                      className="flex-1 sm:w-40 px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all shadow-sm" 
+                      placeholder="Dept Name (e.g. Physics)" 
+                    />
+                    <div className="flex gap-1.5">
+                      <button 
+                        onClick={async () => {
+                          const labelInput = document.getElementById('add-dept-label') as HTMLInputElement;
+                          const labelV = labelInput.value;
+                          if(!labelV) return;
+                          const value = labelV.toUpperCase().replace(/\s+/g, '_');
+                          await fetch('/api/system/departments', { 
+                            method: 'POST', 
+                            body: JSON.stringify({label: labelV, value})
+                          });
+                          labelInput.value = ''; reloadConfig(); setShowAddDeptForm(false);
+                          setAdminMessage({ type: "success", text: `Department ${labelV} added.` });
+                        }} 
+                        className="h-9 px-3 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 transition-colors shrink-0 shadow-sm"
+                      >
+                        Add
+                      </button>
+                      <button 
+                        onClick={() => setShowAddDeptForm(false)}
+                        className="h-9 px-2 bg-white border border-gray-200 text-gray-400 rounded-lg hover:text-gray-600 transition-colors"
+                      >
+                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {selectedDeptForRoles && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { value: "HOD", label: "Head of Department" },
-                  { value: "FACULTY", label: "Faculty" },
-                  { value: "CLASS_COORDINATOR", label: "Class Coordinator" },
-                ].map((r) => {
+                {departmentRoles.map((r) => {
                   const isActive = quickAssignRole === `${r.value}_DEPT`;
                   return (
                     <div key={r.value} className="space-y-2">
@@ -597,6 +731,25 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
                 })}
               </div>
             )}
+
+            {/* Global Restore Button at the bottom of the section */}
+            <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Advanced Maintenance</h4>
+                <p className="text-xs text-gray-400">Restores all original MITS departments and base system roles.</p>
+              </div>
+              <button 
+                onClick={async () => {
+                  if(!confirm("Restore all defaults? This wipes custom changes.")) return;
+                  setAdminMessage({ type: "success", text: "Restoring..." });
+                  const res = await fetch('/api/system/reset', { method: 'POST' });
+                  if(res.ok) { setAdminMessage({ type: "success", text: "Restored!" }); reloadConfig(); }
+                }}
+                className="px-4 py-1.5 bg-gray-50 border border-gray-200 text-gray-500 rounded-lg text-[10px] font-bold hover:bg-gray-100 transition-all uppercase tracking-tight"
+              >
+                Restore Defaults
+              </button>
+            </div>
           </div>
 
           {/* ─── Search & Assign Roles ─── */}
@@ -815,7 +968,7 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
                         className="block w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white outline-none transition-all text-gray-900 text-sm"
                       >
                         <option value="">Select a department...</option>
-                        {DEPARTMENTS.map((dept) => (
+                        {departments.map((dept) => (
                           <option key={dept.value} value={dept.value}>
                             {dept.label}
                           </option>
@@ -936,6 +1089,204 @@ export default function StaffDashboard({ params }: { params: Promise<{ role: str
             </div>
           </div>
         </div>
+
+        {/* Digital Signature Management (HOD Only) */}
+        {role === "hod" && (
+          <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm p-6 overflow-hidden">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Digital Signature
+                </h3>
+                <p className="text-sm text-gray-500 text-left">
+                  Upload your signature to automatically include it in approved Bonafide Certificates.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-6">
+                {(user as any)?.signatureUrl ? (
+                  <div className="group relative">
+                    <div className="h-20 w-40 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center p-2 overflow-hidden shadow-inner">
+                      <img 
+                        src={(user as any).signatureUrl} 
+                        alt="Current Signature" 
+                        className="max-h-full max-w-full object-contain mix-blend-multiply"
+                      />
+                    </div>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                      <p className="text-[10px] text-white font-bold uppercase tracking-wider">Current Signature</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-20 w-40 bg-gray-50 border border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-2">
+                    <svg className="h-6 w-6 text-gray-300 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center line-clamp-1">No Signature</p>
+                  </div>
+                )}
+
+                <div className="shrink-0">
+                  <input
+                    type="file"
+                    id="signature-upload"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      // Use base64 for now in dev/demo
+                      setActionLoading("uploading_sig");
+                      const reader = new FileReader();
+                      reader.onloadend = async () => {
+                        try {
+                          const res = await fetch("/api/hod/signature", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ signatureUrl: reader.result }),
+                          });
+                          const result = await res.json();
+                          if (res.ok) {
+                            window.location.reload(); 
+                          } else {
+                            alert(result.error || "Failed to upload signature. The image might be too large.");
+                          }
+                        } catch (err) {
+                          console.error("Signature upload failed:", err);
+                        } finally {
+                          setActionLoading(null);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  <label
+                    htmlFor="signature-upload"
+                    className={`inline-flex items-center px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-sm cursor-pointer ${
+                      actionLoading === "uploading_sig" ? "opacity-50 cursor-wait" : ""
+                    }`}
+                  >
+                    {actionLoading === "uploading_sig" ? "Uploading..." : (user as any)?.signatureUrl ? "Update Signature" : "Upload Signature"}
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex gap-3">
+              <svg className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-xs text-blue-700 leading-relaxed text-left">
+                <strong>Tip for best results:</strong> Use a clear image (PNG or JPG) with a white or transparent background. Avoid shadows and ensure the signature occupies most of the frame.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Registration Approvals for General Office */}
+        {role === "general_office" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Registration Approvals</h2>
+                <p className="text-sm text-gray-500 mt-1">Review and approve new user accounts (external emails)</p>
+              </div>
+              <div className="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-bold border border-amber-100 flex items-center">
+                <span className="h-2 w-2 bg-amber-500 rounded-full mr-2 animate-pulse" />
+                {registrations.length} PENDING
+              </div>
+            </div>
+
+            {registrationMessage && (
+              <div className={`p-4 rounded-xl text-sm font-medium border flex items-center space-x-2 ${
+                registrationMessage.type === "success"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-red-50 text-red-700 border-red-200"
+              }`}>
+                <span>{registrationMessage.text}</span>
+              </div>
+            )}
+
+            {fetchingRegistrations ? (
+              <div className="bg-white p-12 rounded-2xl border border-gray-100 shadow-sm text-center">
+                <div className="h-8 w-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-gray-400 text-sm">Fetching registrations...</p>
+              </div>
+            ) : registrations.length === 0 ? (
+              <div className="bg-gray-50/50 p-12 rounded-2xl border border-dashed border-gray-200 text-center">
+                <div className="h-12 w-12 bg-white rounded-xl shadow-sm flex items-center justify-center mx-auto mb-3 border border-gray-100">
+                  <svg className="h-6 w-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 font-medium">No pending registrations</p>
+                <p className="text-xs text-gray-400 mt-1">All new accounts have been processed.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-gray-50/80 border-b border-gray-100">
+                      <tr>
+                        <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">User Details</th>
+                        <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Registration Info</th>
+                        <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Department</th>
+                        <th className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100/80">
+                      {registrations.map((u: any) => (
+                        <tr key={u.id} className="hover:bg-gray-50/60 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-bold text-gray-900">{u.name}</p>
+                            <p className="text-xs text-gray-500">{u.email}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-gray-600"><span className="font-semibold text-gray-400">Enrollment:</span> {u.enrollmentNo}</p>
+                              <p className="text-xs text-gray-600"><span className="font-semibold text-gray-400">Father's Name:</span> {u.fatherName || "\u2014"}</p>
+                              <p className="text-xs text-gray-600"><span className="font-semibold text-gray-400">Passout Year:</span> {u.passOutYear || "\u2014"}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-tight">
+                              {DEPT_LABEL_MAP[u.department || ""] || u.department || "No Dept"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRegistrationAction(u.id, "REJECT"); }}
+                                disabled={!!actionLoading}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Reject Registration"
+                              >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRegistrationAction(u.id, "APPROVE"); }}
+                                disabled={!!actionLoading}
+                                className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-200 disabled:opacity-50"
+                              >
+                                {actionLoading === u.id ? "Processing..." : "Approve Account"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pending Approvals */}
         {approvals.length === 0 ? (
