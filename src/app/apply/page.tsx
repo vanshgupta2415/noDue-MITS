@@ -57,14 +57,14 @@ export default function ApplyNoDues() {
     passOutYear: "",
     course: "",
     cgpa: "",
-    isHostelResident: "No",
+    isHostelResident: false,
     hostelName: "",
     roomNumber: "",
-    cautionMoneyRefund: "NotApplied",
+    cautionMoneyRefund: false,
     receiptNumber: "",
-    exitSurvey: "Not Completed",
-    feesCleared: "Not Cleared",
-    projectCertSubmitted: "Not Submitted",
+    exitSurvey: false,
+    feesCleared: false,
+    projectCertSubmitted: false,
     feeReceipts: "",
     marksheet: "",
     bankDetails: "",
@@ -229,16 +229,16 @@ export default function ApplyNoDues() {
     }
 
     if (stepNum === 3) {
-      if (formData.isHostelResident) {
-        if (!formData.hostelName.trim()) errors.hostelName = "Hostel Name is required";
-        if (!formData.roomNumber.trim()) errors.roomNumber = "Room Number is required";
+      if (formData.isHostelResident === true || formData.isHostelResident === "Yes") {
+        if (!formData.hostelName?.trim()) errors.hostelName = "Hostel Name is required";
+        if (!formData.roomNumber?.trim()) errors.roomNumber = "Room Number is required";
       }
-      if (formData.cautionMoneyRefund) {
-        if (!formData.receiptNumber.trim()) errors.receiptNumber = "Receipt Number is required";
+      if (formData.cautionMoneyRefund === true || formData.cautionMoneyRefund === "Yes") {
+        if (!formData.receiptNumber?.trim()) errors.receiptNumber = "Receipt Number is required";
       }
-      if (!formData.exitSurvey) errors.exitSurvey = "Exit Survey must be completed";
-      if (!formData.feesCleared) errors.feesCleared = "All fees must be cleared";
-      if (!formData.projectCertSubmitted) errors.projectCertSubmitted = "Project/Internship certificate must be submitted";
+      if (formData.exitSurvey !== true && formData.exitSurvey !== "Yes") errors.exitSurvey = "Exit Survey must be completed";
+      if (formData.feesCleared !== true && formData.feesCleared !== "Yes") errors.feesCleared = "All fees must be cleared";
+      if (formData.projectCertSubmitted !== true && formData.projectCertSubmitted !== "Yes") errors.projectCertSubmitted = "Project/Internship certificate must be submitted";
     }
 
     // Stage 4 (documents) — URLs are optional, no hard validation
@@ -629,7 +629,7 @@ export default function ApplyNoDues() {
                     {renderField("isHostelResident", formData.isHostelResident, (val) => update("isHostelResident", val), fieldErrors.isHostelResident)}
                   </div>
 
-                  {formData.isHostelResident === "Yes" && (
+                  {(formData.isHostelResident === true || formData.isHostelResident === "Yes") && (
                     <>
                       {allFields
                         .filter(f => ["hostelName", "roomNumber", "cautionMoneyRefund"].includes(f.name))
@@ -648,7 +648,13 @@ export default function ApplyNoDues() {
                 <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-4">Final Submission Requirements</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {allFields
-                    .filter(f => ["receiptNumber", "exitSurvey", "feesCleared", "projectCertSubmitted"].includes(f.name))
+                    .filter(f => {
+                      const names = ["exitSurvey", "feesCleared", "projectCertSubmitted"];
+                      if (formData.cautionMoneyRefund === true || formData.cautionMoneyRefund === "Yes") {
+                        names.unshift("receiptNumber");
+                      }
+                      return names.includes(f.name);
+                    })
                     .map(f => (
                       <div key={f.id}>
                         {renderField(f.name, formData[f.name as keyof FormData], (val) => update(f.name as keyof FormData, val), fieldErrors[f.name])}
