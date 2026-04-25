@@ -75,15 +75,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
     // @ts-ignore - Prisma property might be missing from IDE IntelliSense despite generation
     const template = await prisma.formTemplate.findUnique({ where: { formType } });
 
+    // Fetch all system departments to inject into schemas
+    const systemDepts = await prisma.systemDepartment.findMany({
+      orderBy: { label: "asc" }
+    });
+    const deptOptions = systemDepts.map(d => d.value);
+
     // If no saved template, use defaults
-    const savedSchema = template?.schema as any[] | undefined;
+    let schema = (template?.schema as any[] | undefined) || DEFAULT_SCHEMAS[formType] || [];
 
-    if (!savedSchema) {
-      const defaultSchema = DEFAULT_SCHEMAS[formType] ?? [];
-      return NextResponse.json({ success: true, data: { formType, schema: defaultSchema } });
-    }
+    // Automatically inject dynamic departments into any field named 'department'
+    schema = schema.map(field => {
+      if (field.name === "department") {
+        return { ...field, options: deptOptions };
+      }
+      return field;
+    });
 
-    return NextResponse.json({ success: true, data: template });
+    return NextResponse.json({ 
+      success: true, 
+      data: template ? { ...template, schema } : { formType, schema } 
+    });
   } catch (error) {
     console.error(`Form Template Error:`, error);
     return NextResponse.json({ success: false, error: "Failed to fetch template" }, { status: 500 });

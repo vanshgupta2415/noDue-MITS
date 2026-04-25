@@ -5,20 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { useSystemConfig } from "@/hooks/useSystemConfig";
 
-const DEPARTMENTS = [
-  "CSE",
-  "IT",
-  "ECE",
-  "EE",
-  "ME",
-  "CE",
-  "CH",
-  "MCA",
-  "MBA",
-  "PHY",
-  "MATH",
-  "HUM",
-];
+
 
 function VerifyForm() {
   const searchParams = useSearchParams();
