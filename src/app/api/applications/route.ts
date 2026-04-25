@@ -50,10 +50,10 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" },
       });
 
-      const enriched = applications.map((app) => {
+      const enriched = applications.map((app: any) => {
         const total = app.approvals.length;
         const approved = app.approvals.filter(
-          (a) => a.status === "APPROVED"
+          (a: any) => a.status === "APPROVED"
         ).length;
         const completionPercentage =
           total > 0 ? Math.round((approved / total) * 100) : 0;
@@ -84,13 +84,37 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      const where: any = {
+        department,
+        stage: Number(stage),
+        status: "UNDER_REVIEW",
+      };
+
+      // Filter by academic department for departmental roles
+      if (["FACULTY", "HOD", "CLASS_COORDINATOR"].includes(session.role) && session.department) {
+        where.application = {
+          student: {
+            department: session.department
+          }
+        };
+      }
+
       const approvals = await prisma.approval.findMany({
-        where: {
-          department,
-          stage: Number(stage),
-          status: "UNDER_REVIEW",
+        where,
+        include: { 
+          application: {
+            include: {
+              student: {
+                select: {
+                  name: true,
+                  email: true,
+                  department: true,
+                  enrollmentNo: true
+                }
+              }
+            }
+          }
         },
-        include: { application: true },
         orderBy: { application: { createdAt: "asc" } },
       });
 

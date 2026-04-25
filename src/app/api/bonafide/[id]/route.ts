@@ -92,6 +92,15 @@ export async function PATCH(
     if (!application) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
 
     if (session.role === "HOD" && (action === "APPROVE_HOD" || action === "REJECT_HOD")) {
+      // Academic Department check
+      const student = await prisma.user.findUnique({
+        where: { id: application.studentId },
+        select: { department: true }
+      });
+      if (session.department && student?.department !== session.department) {
+        return NextResponse.json({ success: false, error: "You can only approve applications from your own department" }, { status: 403 });
+      }
+
       const status = action === "APPROVE_HOD" ? "APPROVED" : "REJECTED";
       const globalStatus = status === "REJECTED" ? "REJECTED" : "FULLY_APPROVED"; // Only HOD approval needed
       

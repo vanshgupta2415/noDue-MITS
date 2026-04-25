@@ -29,7 +29,22 @@ export async function GET(request: NextRequest) {
     // Role-based fetching
     if (role === "HOD") {
       const pending = await prisma.nocApplication.findMany({
-        where: { hodApprovalStatus: "UNDER_REVIEW" },
+        where: { 
+          hodApprovalStatus: "UNDER_REVIEW",
+          student: {
+            department: session.department
+          }
+        },
+        include: {
+          student: {
+            select: {
+              name: true,
+              email: true,
+              department: true,
+              enrollmentNo: true
+            }
+          }
+        },
         orderBy: { createdAt: "asc" },
       });
       return NextResponse.json({ success: true, data: pending });
@@ -123,6 +138,15 @@ export async function PATCH(request: Request) {
     }
 
     if (session.role === "HOD" && (action === "APPROVE_HOD" || action === "REJECT_HOD")) {
+      // Academic Department check
+      const student = await prisma.user.findUnique({
+        where: { id: application.studentId },
+        select: { department: true }
+      });
+      if (session.department && student?.department !== session.department) {
+        return NextResponse.json({ success: false, error: "You can only approve applications from your own department" }, { status: 403 });
+      }
+
       const status = action === "APPROVE_HOD" ? "APPROVED" : "REJECTED";
       const globalStatus = status === "REJECTED" ? "REJECTED" : application.tpcApprovalStatus === "APPROVED" ? "FULLY_APPROVED" : application.status;
       
@@ -131,7 +155,7 @@ export async function PATCH(request: Request) {
         data: {
           hodApprovalStatus: status,
           hodRemarks: remarks || null,
-          status: globalStatus,
+          status: globalStatus as any,
         },
       });
       return NextResponse.json({ success: true, data: updated });

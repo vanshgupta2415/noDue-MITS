@@ -86,6 +86,20 @@ export async function PATCH(request: Request) {
       );
     }
 
+    // NEW: Academic Department check for Faculty/HOD/Coordinator
+    if (["FACULTY", "HOD", "CLASS_COORDINATOR"].includes(session.role) && session.department) {
+      const student = await prisma.user.findUnique({
+        where: { id: approval.application.studentId },
+        select: { department: true }
+      });
+      if (student?.department !== session.department) {
+        return NextResponse.json(
+          { success: false, error: `You can only approve applications from the ${session.department} department.` },
+          { status: 403 }
+        );
+      }
+    }
+
     // --- Stage validation: this approval must be the application's current stage ---
     if (approval.stage !== approval.application.currentStage) {
       return NextResponse.json(
@@ -122,7 +136,7 @@ export async function PATCH(request: Request) {
     if (status === "APPROVED") {
       // Find the next stage from the approval list (fixes hostel-skip bug)
       const currentIndex = application.approvals.findIndex(
-        (a) => a.id === approvalId
+        (a: any) => a.id === approvalId
       );
       const nextApproval = application.approvals[currentIndex + 1];
 
