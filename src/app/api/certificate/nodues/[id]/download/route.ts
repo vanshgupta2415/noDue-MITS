@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/session";
-import * as puppeteer from "puppeteer";
+// Dynamic Puppeteer imports for Vercel support
 import * as Handlebars from "handlebars";
 import * as fs from "fs";
 import * as path from "path";
@@ -103,10 +103,26 @@ export async function GET(
     const htmlContent = template(data);
 
     // Generate PDF with Puppeteer
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    let browser;
+    if (process.env.NODE_ENV === "development" || !process.env.VERCEL_ENV) {
+      const puppeteer = require("puppeteer");
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+    } else {
+      const puppeteerCore = require("puppeteer-core");
+      const chromium = require("@sparticuz/chromium");
+      // Required for Vercel deployment
+      chromium.setGraphicsMode = false;
+      
+      browser = await puppeteerCore.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+    }
     
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: "networkidle0" });
