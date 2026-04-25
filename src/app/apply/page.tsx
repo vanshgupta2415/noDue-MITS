@@ -737,13 +737,16 @@ export default function ApplyNoDues() {
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-gray-500">{getLabel("isHostelResident", "Hostel Resident")}:</span> <span className="font-medium text-gray-900">{formData.isHostelResident?.toString()}</span></div>
-                  {formData.isHostelResident === "Yes" && (
+                  {(formData.isHostelResident === true || formData.isHostelResident === "Yes") && (
                     <>
                       <div><span className="text-gray-500">{getLabel("hostelName", "Hostel")}:</span> <span className="font-medium text-gray-900">{formData.hostelName}</span></div>
                       <div><span className="text-gray-500">{getLabel("roomNumber", "Room")}:</span> <span className="font-medium text-gray-900">{formData.roomNumber}</span></div>
                     </>
                   )}
-                  <div><span className="text-gray-500">{getLabel("cautionMoneyRefund", "Caution Refund")}:</span> <span className="font-medium text-gray-900">{formData.cautionMoneyRefund?.toString()}</span></div>
+                  <div><span className="text-gray-500">{getLabel("cautionMoneyRefund", "Caution Refund")}:</span> <span className="font-medium text-gray-900">{formData.cautionMoneyRefund ? "Yes" : "No"}</span></div>
+                  {(formData.cautionMoneyRefund === true || formData.cautionMoneyRefund === "Yes") && (
+                    <div className="col-span-2"><span className="text-gray-500">{getLabel("receiptNumber", "Receipt Number")}:</span> <span className="font-medium text-gray-900">{formData.receiptNumber}</span></div>
+                  )}
                 </div>
               </div>
 
