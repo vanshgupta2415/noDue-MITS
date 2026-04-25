@@ -79,13 +79,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
     const systemDepts = await prisma.systemDepartment.findMany({
       orderBy: { label: "asc" }
     });
-    const deptOptions = systemDepts.map(d => d.value);
+    const deptOptions = systemDepts.map((d: any) => d.value);
 
     // If no saved template, use defaults
     let schema = (template?.schema as any[] | undefined) || DEFAULT_SCHEMAS[formType] || [];
 
     // Automatically inject dynamic departments into any field named 'department'
-    schema = schema.map(field => {
+    schema = schema.map((field: any) => {
       if (field.name === "department") {
         return { ...field, options: deptOptions };
       }
