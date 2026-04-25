@@ -59,6 +59,7 @@ function LoginForm() {
           name: data.user.name,
           email: data.user.email,
           role: data.user.role,
+          status: data.user.status || "ACTIVE",
           enrollmentNo: data.user.enrollmentNo,
           department: data.user.department,
         });
