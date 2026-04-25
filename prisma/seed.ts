@@ -90,11 +90,11 @@ async function main() {
   await createUser({ email: "workshop@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Mr. Ramesh Yadav", role: "WORKSHOP_ADMIN" });
   console.log(`✅ Workshop Admin: workshop@mitsgwl.ac.in`);
 
-  await createUser({ email: "tnp@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Dr. Priya Singh", role: "TP_OFFICER" });
-  console.log(`✅ T&P Officer: tnp@mitsgwl.ac.in`);
+  await createUser({ email: "tp@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Dr. Priya Singh", role: "TP_OFFICER" });
+  console.log(`✅ T&P Officer: tp@mitsgwl.ac.in`);
 
-  await createUser({ email: "office@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Mr. Vikram Joshi", role: "GENERAL_OFFICE" });
-  console.log(`✅ General Office: office@mitsgwl.ac.in`);
+  await createUser({ email: "general@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Mr. Vikram Joshi", role: "GENERAL_OFFICE" });
+  console.log(`✅ General Office: general@mitsgwl.ac.in`);
 
   await createUser({ email: "accounts@mitsgwl.ac.in", password: DEFAULT_PASSWORD, name: "Mrs. Kavita Dubey", role: "ACCOUNTS_OFFICER" });
   console.log(`✅ Accounts Officer: accounts@mitsgwl.ac.in`);
