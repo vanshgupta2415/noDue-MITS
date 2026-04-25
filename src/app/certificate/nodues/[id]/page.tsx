@@ -41,6 +41,7 @@ export default function NoDuesCertificate({
   const router = useRouter();
   const [data, setData] = useState<NoDuesData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const certificateRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,19 +65,28 @@ export default function NoDuesCertificate({
   };
 
   const handleDownloadPDF = async () => {
-    if (!certificateRef.current) return;
-    const element = certificateRef.current;
-    const canvas = await html2canvas(element, {
-      scale: 4,
-      useCORS: true,
-      logging: false,
-    });
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight, undefined, "NONE");
-    pdf.save(`NoDues_${data?.student?.enrollmentNo || "Certificate"}.pdf`);
+    setDownloading(true);
+    try {
+      const response = await fetch(`/api/certificate/nodues/${id}/download`);
+      if (!response.ok) {
+        throw new Error("Failed to download PDF");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `NoDues_${data?.student?.enrollmentNo || "Certificate"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   /* ── Loading ──────────────────────────────────────────────────── */
@@ -130,10 +140,22 @@ export default function NoDuesCertificate({
         </button>
         <button
           onClick={handleDownloadPDF}
-          className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition shadow-md flex items-center gap-2"
+          disabled={downloading}
+          className={`px-5 py-2.5 rounded-xl font-semibold shadow-md flex items-center gap-2 transition ${
+            downloading 
+              ? "bg-emerald-400 text-white cursor-not-allowed" 
+              : "bg-emerald-600 text-white hover:bg-emerald-700"
+          }`}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Download PDF
+          {downloading ? (
+            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          ) : (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          )}
+          {downloading ? "Generating..." : "Download PDF"}
         </button>
         <button
           onClick={() => window.print()}
