@@ -13,7 +13,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.4.1",
+    "@prisma/adapter-pg": "^5.22.0",
     "@prisma/client": "^5.22.0",
     "@sparticuz/chromium": "^147.0.2",
     "@supabase/ssr": "^0.8.0",
